@@ -62,10 +62,4 @@ Opens at http://localhost:3000
 ---
 
 ## STEP 6 — Deploy app
-
-**Deployed but not working** — Check Netlify environment variables are set
-(Settings → Environment variables — they don't auto-import from .env.local)
-
 ---
-
-Made for Seattle Melt MBA Team 🏔️
