@@ -1,0 +1,434 @@
+/* ── MeetingNotes.css ── */
+
+.mn-wrap {
+  padding: 1.5rem;
+  max-width: 860px;
+}
+
+.mn-loading {
+  padding: 2rem;
+  color: #888;
+  font-size: 0.9rem;
+}
+
+/* ── Header ── */
+.mn-list-header,
+.mn-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.mn-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+/* ── Card base ── */
+.mn-card {
+  background: #1a1f2e;
+  border: 1px solid #2a3044;
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem;
+}
+
+/* ── Search bar ── */
+.mn-search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.mn-search-input {
+  flex: 1;
+}
+
+.mn-filter-select {
+  width: 140px;
+}
+
+/* ── Inputs ── */
+.mn-input {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #2a3044;
+  border-radius: 7px;
+  padding: 8px 11px;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.mn-input:focus {
+  border-color: #4ef0c0;
+}
+
+.mn-input option {
+  background: #1a1f2e;
+}
+
+.mn-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* ── Form layout ── */
+.mn-form-card {
+  margin-top: 0.5rem;
+}
+
+.mn-field {
+  margin-bottom: 1rem;
+}
+
+.mn-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mn-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.mn-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.mn-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 7px;
+  color: #f87171;
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  margin-bottom: 1rem;
+}
+
+/* ── Buttons ── */
+.mn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, background 0.15s;
+  font-family: inherit;
+}
+
+.mn-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mn-btn-primary {
+  background: #4ef0c0;
+  color: #0f1117;
+}
+
+.mn-btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.mn-btn-ghost {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #2a3044;
+}
+
+.mn-btn-ghost:hover {
+  background: #1a1f2e;
+  color: #e2e8f0;
+}
+
+.mn-btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.mn-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.mn-btn-sm {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+}
+
+/* ── Icon buttons (in list cards) ── */
+.mn-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.mn-icon-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.mn-icon-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* ── List ── */
+.mn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mn-note-card {
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.mn-note-card:hover {
+  border-color: #3a4060;
+}
+
+.mn-note-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.mn-note-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.mn-note-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.mn-note-preview {
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 5px 0 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Meta row ── */
+.mn-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.mn-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+/* ── Badges ── */
+.mn-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mn-badge-high {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.mn-badge-medium {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.mn-badge-low {
+  background: rgba(78, 240, 192, 0.12);
+  color: #4ef0c0;
+}
+
+/* ── Tags ── */
+.mn-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.mn-tag {
+  background: rgba(78, 240, 192, 0.1);
+  color: #4ef0c0;
+  font-size: 0.72rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(78, 240, 192, 0.2);
+}
+
+/* ── Empty state ── */
+.mn-empty {
+  text-align: center;
+  padding: 3.5rem 1rem;
+  color: #64748b;
+}
+
+.mn-empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mn-empty-text {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.mn-empty-sub {
+  font-size: 0.85rem;
+}
+
+/* ── Back button ── */
+.mn-back-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+
+.mn-back-btn:hover {
+  color: #e2e8f0;
+}
+
+/* ── Detail view ── */
+.mn-detail-card {
+  margin-top: 0;
+}
+
+.mn-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.mn-detail-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0 0 8px;
+}
+
+.mn-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mn-detail-section {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid #2a3044;
+}
+
+.mn-section-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 8px;
+  font-weight: 500;
+}
+
+.mn-detail-body {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.mn-action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mn-action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.mn-action-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ef0c0;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+@media (max-width: 600px) {
+  .mn-row-2 {
+    grid-template-columns: 1fr;
+  }
+  .mn-detail-header {
+    flex-direction: column;
+  }
+  .mn-detail-actions {
+    width: 100%;
+  }
+  .mn-detail-actions .mn-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

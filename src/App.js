@@ -4,6 +4,8 @@ import { Modal } from './components/Modal';
 import { Dashboard } from './components/Dashboard';
 import { Assignments } from './components/Assignments';
 import { Courses, Meetings, Team } from './components/Views';
+import MeetingNotes from './components/MeetingNotes';
+
 import './App.css';
 
 const VIEWS = [
@@ -12,6 +14,7 @@ const VIEWS = [
   { id: 'courses', icon: '📚', label: 'Courses' },
   { id: 'meetings', icon: '🎥', label: 'Meetings' },
   { id: 'team', icon: '👥', label: 'Team' },
+  { id: 'notes', icon: '📋', label: 'Notes' },
 ];
 
 export default function App() {
@@ -129,9 +132,12 @@ export default function App() {
       {view === 'team' && (
         <Team assignments={data.assignments} />
       )}
+      {view === 'notes' && (
+        <MeetingNotes quarterId={data.activeQid} />
+      )}
 
       {/* Modals */}
-      {modal && (
+      {modal && modal.type !== 'quarter' && (
         <Modal
           type={modal.type}
           data={modal.data}
