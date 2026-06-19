@@ -20,7 +20,7 @@ const VIEWS = [
 export default function App() {
   const data = useAppData();
   const [view, setView] = useState('dashboard');
-  const [modal, setModal] = useState(null); // { type, data }
+  const [modal, setModal] = useState(null);
 
   function openModal(type, editData = null) {
     setModal({ type, data: editData });
@@ -116,8 +116,10 @@ export default function App() {
       )}
       {view === 'courses' && (
         <Courses
-          courses={data.courses}
+          courses={data.allCourses}        // ← ALL courses across all quarters
           assignments={data.assignments}
+          quarters={data.quarters}
+          activeQid={data.activeQid}
           onAdd={() => openModal('course')}
           onEdit={(c) => openModal('course', c)}
         />
@@ -163,9 +165,51 @@ export default function App() {
                 </button>
               </div>
             ))}
+            <div style={{borderTop:'1px solid var(--border)',marginTop:12,paddingTop:12}}>
+              <AddQuarterInline onAdd={async (label) => { await data.addQuarter(label); }} />
+            </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Inline add quarter form inside the modal ──
+function AddQuarterInline({ onAdd }) {
+  const [label, setLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleAdd() {
+    if (!label.trim()) return;
+    setSaving(true);
+    try { await onAdd(label.trim()); setLabel(''); } catch(e) {}
+    setSaving(false);
+  }
+
+  return (
+    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+      <input
+        placeholder="e.g. Summer 2026"
+        value={label}
+        onChange={e => setLabel(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        style={{
+          flex:1, fontSize:13,
+          background:'var(--surface)',
+          border:'1px solid var(--border)',
+          borderRadius:8, padding:'7px 10px',
+          color:'var(--text)',
+        }}
+      />
+      <button
+        className="btn btn-accent"
+        onClick={handleAdd}
+        disabled={saving || !label.trim()}
+        style={{fontSize:13,padding:'7px 14px',whiteSpace:'nowrap'}}
+      >
+        {saving ? '…' : '+ Add'}
+      </button>
     </div>
   );
 }
