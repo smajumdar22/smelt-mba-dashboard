@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { dueColor, dueLabel } from '../lib/constants';
+import { supabase } from '../lib/supabase';
 
 function priorityBadge(p) {
   const map = { high: 'badge-red', medium: 'badge-orange', low: 'badge-gray' };
@@ -10,6 +11,95 @@ function typeBadge(t) {
   return <span className={`badge ${t==='discussion'?'badge-green':'badge-yellow'}`}>{t==='discussion'?'DISC':'ASGN'}</span>;
 }
 
+// ── Per-person completion pills ──────────────────────────
+function CompletionPills({ assignmentId, assignees, onAllDone }) {
+  const [completions, setCompletions] = useState({}); // { person: bool }
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!assignees.length) { setLoading(false); return; }
+    const { data } = await supabase
+      .from('assignment_completions')
+      .select('*')
+      .eq('assignment_id', assignmentId);
+    const map = {};
+    (data || []).forEach(r => { map[r.person] = r.completed; });
+    setCompletions(map);
+    setLoading(false);
+  }, [assignmentId, assignees]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function toggle(person) {
+    const newDone = !completions[person];
+    await supabase.from('assignment_completions').upsert(
+      {
+        assignment_id: assignmentId,
+        person,
+        completed: newDone,
+        completed_at: newDone ? new Date().toISOString() : null,
+      },
+      { onConflict: 'assignment_id,person' }
+    );
+    const updated = { ...completions, [person]: newDone };
+    setCompletions(updated);
+    // If everyone is done, bubble up
+    if (assignees.every(p => updated[p])) onAllDone?.();
+  }
+
+  if (loading) return <div style={{fontSize:12,color:'var(--text3)'}}>Loading…</div>;
+
+  const allDone = assignees.length > 0 && assignees.every(p => completions[p]);
+
+  return (
+    <div>
+      <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>
+        Mark your completion
+      </div>
+      <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+        {assignees.map(person => {
+          const done = !!completions[person];
+          return (
+            <button
+              key={person}
+              onClick={() => toggle(person)}
+              style={{
+                display:'flex', alignItems:'center', gap:6,
+                padding:'6px 14px 6px 8px',
+                borderRadius:99,
+                border:`1.5px solid ${done ? '#4ef0c060' : 'var(--border)'}`,
+                background: done ? '#4ef0c015' : 'var(--surface)',
+                color: done ? '#4ef0c0' : 'var(--text2)',
+                cursor:'pointer', fontSize:13, fontWeight: done ? 600 : 400,
+                transition:'all 0.15s',
+              }}
+            >
+              <span style={{
+                width:18, height:18, borderRadius:'50%', flexShrink:0,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                background: done ? '#4ef0c0' : 'var(--border)',
+                color: done ? '#000' : 'transparent',
+                fontSize:11, fontWeight:700,
+              }}>✓</span>
+              {person}
+            </button>
+          );
+        })}
+      </div>
+      {allDone && (
+        <div style={{
+          marginTop:10, fontSize:12, color:'#4ef0c0',
+          background:'#4ef0c010', border:'1px solid #4ef0c030',
+          borderRadius:8, padding:'6px 12px', textAlign:'center',
+        }}>
+          ✅ All team members done!
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Assignments component ───────────────────────────
 export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone }) {
   const [tab, setTab] = useState('pending');
   const [detail, setDetail] = useState(null);
@@ -25,7 +115,6 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
     return new Date(a.due_date) - new Date(b.due_date);
   });
 
-  // Group by course
   const byCourse = {};
   sorted.forEach(a => {
     if (!byCourse[a.course_id]) byCourse[a.course_id] = [];
@@ -34,6 +123,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
 
   const detailItem = detail ? assignments.find(x => x.id === detail) : null;
   const detailCourse = detailItem ? courses.find(c => c.id === detailItem.course_id) : null;
+  const hasMultipleAssignees = (detailItem?.assigned_to?.length || 0) > 1;
 
   return (
     <div className="content">
@@ -111,6 +201,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-handle" />
             <div className="modal-title">{detailItem.name}</div>
+
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
               <span className={`badge ${detailItem.type==='discussion'?'badge-green':'badge-yellow'}`}>
                 {detailItem.type==='discussion'?'DISCUSSION':'ASSIGNMENT'}
@@ -120,6 +211,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
                 {dueLabel(detailItem.due_date)}
               </span>
             </div>
+
             <div className="detail-rows">
               {detailCourse && (
                 <div className="detail-row">
@@ -142,17 +234,44 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
               {detailItem.canvas_url && (
                 <div className="detail-row">
                   <span className="detail-label">Canvas</span>
-                  <a href={detailItem.canvas_url} target="_blank" rel="noopener noreferrer" className="canvas-link">Open assignment↗</a>
+                  <a href={detailItem.canvas_url} target="_blank" rel="noopener noreferrer"
+                    className="canvas-link">Open assignment↗</a>
                 </div>
               )}
             </div>
+
+            {/* Per-person completion — only when multiple assignees */}
+            {hasMultipleAssignees && (
+              <div style={{
+                margin:'14px 0',
+                padding:'12px 14px',
+                background:'var(--surface)',
+                borderRadius:10,
+                border:'1px solid var(--border)',
+              }}>
+                <CompletionPills
+                  assignmentId={detailItem.id}
+                  assignees={detailItem.assigned_to}
+                  onAllDone={() => onToggleDone(detailItem.id, false)}
+                />
+              </div>
+            )}
+
             <div className="modal-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => setDetail(null)}>Close</button>
-              <button className={`btn ${detailItem.done?'btn-ghost':'btn-accent'} btn-sm`}
-                onClick={() => { onToggleDone(detailItem.id, detailItem.done); setDetail(null); }}>
-                {detailItem.done ? 'Mark undone' : 'Mark done ✓'}
+              {/* Single assignee or no assignee — show regular mark done */}
+              {!hasMultipleAssignees && (
+                <button
+                  className={`btn ${detailItem.done?'btn-ghost':'btn-accent'} btn-sm`}
+                  onClick={() => { onToggleDone(detailItem.id, detailItem.done); setDetail(null); }}
+                >
+                  {detailItem.done ? 'Mark undone' : 'Mark done ✓'}
+                </button>
+              )}
+              <button className="btn btn-ghost btn-sm"
+                onClick={() => { setDetail(null); onEdit(detailItem); }}>
+                Edit
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setDetail(null); onEdit(detailItem); }}>Edit</button>
             </div>
           </div>
         </div>
