@@ -13,7 +13,7 @@ function typeBadge(t) {
 
 // ── Per-person completion pills ──────────────────────────
 function CompletionPills({ assignmentId, assignees, onAllDone }) {
-  const [completions, setCompletions] = useState({}); // { person: bool }
+  const [completions, setCompletions] = useState({});
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -43,7 +43,6 @@ function CompletionPills({ assignmentId, assignees, onAllDone }) {
     );
     const updated = { ...completions, [person]: newDone };
     setCompletions(updated);
-    // If everyone is done, bubble up
     if (assignees.every(p => updated[p])) onAllDone?.();
   }
 
@@ -259,7 +258,6 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
 
             <div className="modal-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => setDetail(null)}>Close</button>
-              {/* Single assignee or no assignee — show regular mark done */}
               {!hasMultipleAssignees && (
                 <button
                   className={`btn ${detailItem.done?'btn-ghost':'btn-accent'} btn-sm`}
