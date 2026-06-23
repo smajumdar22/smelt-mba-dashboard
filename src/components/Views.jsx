@@ -17,34 +17,94 @@ const STATUS_LABELS = {
 };
 
 // ─────────────────────────────────────────────
-// MODULE TASK ROW
+// LINK-AWARE DESCRIPTION RENDERER
 // ─────────────────────────────────────────────
-function ModuleTaskRow({ task, onToggle, onDelete }) {
+function RichText({ text }) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  const isUrl = (s) => /^https?:\/\//.test(s);
+  return (
+    <span>
+      {parts.map((part, i) =>
+        isUrl(part) ? (
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+            style={{ color: '#4ef0c0', textDecoration: 'underline', wordBreak: 'break-all' }}
+            onClick={e => e.stopPropagation()}>
+            {part}
+          </a>
+        ) : part
+      )}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MODULE TASK ROW — per-assignee completion
+// ─────────────────────────────────────────────
+function ModuleTaskRow({ task, completions, onToggleCompletion, onDelete }) {
+  const assignees = task.assigned_to || [];
+  const allDone = assignees.length > 0 && assignees.every(p => completions[p]);
+  const noneDone = assignees.every(p => !completions[p]);
+
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '5px 0', borderBottom: '1px solid var(--border)',
+      padding: '6px 0', borderBottom: '1px solid var(--border)',
     }}>
-      <input
-        type="checkbox"
-        checked={task.done}
-        onChange={() => onToggle(task.id, task.done)}
-        style={{ accentColor: '#4ef0c0', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }}
-      />
-      <span style={{
-        flex: 1, fontSize: 12,
-        color: task.done ? 'var(--text3)' : 'var(--text)',
-        textDecoration: task.done ? 'line-through' : 'none',
-      }}>{task.name}</span>
-      {task.due_date && (
-        <span style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
-          {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-        </span>
+      {/* Task name row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Overall indicator when no assignees */}
+        {assignees.length === 0 && (
+          <input type="checkbox" checked={false} readOnly
+            style={{ accentColor: '#4ef0c0', width: 14, height: 14, flexShrink: 0 }} />
+        )}
+        <span style={{
+          flex: 1, fontSize: 12,
+          color: allDone ? 'var(--text3)' : 'var(--text)',
+          textDecoration: allDone ? 'line-through' : 'none',
+          fontWeight: allDone ? 400 : 500,
+        }}>{task.name}</span>
+        {task.due_date && (
+          <span style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+            📅 {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+        )}
+        <button onClick={() => onDelete(task.id)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, opacity: 0.4, padding: 0 }}>
+          🗑
+        </button>
+      </div>
+
+      {/* Per-assignee checkboxes */}
+      {assignees.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 5, paddingLeft: 4 }}>
+          {assignees.map(person => {
+            const done = !!completions[person];
+            return (
+              <button key={person}
+                onClick={() => onToggleCompletion(task.id, person, done)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  background: done ? '#4ef0c020' : 'var(--surface)',
+                  border: `1px solid ${done ? '#4ef0c060' : 'var(--border)'}`,
+                  borderRadius: 99, padding: '2px 8px 2px 4px',
+                  cursor: 'pointer', fontSize: 11,
+                  color: done ? '#4ef0c0' : 'var(--text2)',
+                  transition: 'all 0.15s',
+                }}>
+                <span style={{
+                  width: 14, height: 14, borderRadius: '50%',
+                  background: done ? '#4ef0c0' : 'var(--border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 9, color: done ? '#000' : 'transparent',
+                  flexShrink: 0,
+                }}>✓</span>
+                {person}
+              </button>
+            );
+          })}
+        </div>
       )}
-      <button
-        onClick={() => onDelete(task.id)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, opacity: 0.4, padding: 0 }}
-      >🗑</button>
     </div>
   );
 }
@@ -55,7 +115,12 @@ function ModuleTaskRow({ task, onToggle, onDelete }) {
 function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
   const [name, setName] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [assignees, setAssignees] = useState([]);
   const [saving, setSaving] = useState(false);
+
+  function toggleAssignee(person) {
+    setAssignees(a => a.includes(person) ? a.filter(x => x !== person) : [...a, person]);
+  }
 
   async function handleAdd() {
     if (!name.trim()) return;
@@ -66,6 +131,7 @@ function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
       quarter_id: quarterId,
       name: name.trim(),
       due_date: dueDate || null,
+      assigned_to: assignees,
       done: false,
     }]);
     setSaving(false);
@@ -73,36 +139,55 @@ function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}
+    <div style={{ background: 'var(--surface)', borderRadius: 8, padding: '8px 10px', marginTop: 6 }}
       onClick={e => e.stopPropagation()}>
-      <input
-        autoFocus
-        placeholder="Task name"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') onCancel(); }}
-        style={{
-          flex: 1, fontSize: 12, background: 'var(--surface)',
-          border: '1px solid var(--border)', borderRadius: 6,
-          padding: '5px 8px', color: 'var(--text)',
-        }}
-      />
-      <input
-        type="date"
-        value={dueDate}
-        onChange={e => setDueDate(e.target.value)}
-        style={{
-          fontSize: 11, background: 'var(--surface)',
-          border: '1px solid var(--border)', borderRadius: 6,
-          padding: '5px 6px', color: 'var(--text3)', width: 130,
-        }}
-      />
-      <button className="btn btn-accent"
-        style={{ fontSize: 12, padding: '5px 10px' }}
-        onClick={handleAdd} disabled={saving}>
-        {saving ? '…' : 'Add'}
-      </button>
-      <button className="btn" style={{ fontSize: 12, padding: '5px 8px' }} onClick={onCancel}>✕</button>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+        <input
+          autoFocus
+          placeholder="Task name *"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}
+          style={{
+            flex: 1, fontSize: 12, background: 'var(--bg)',
+            border: '1px solid var(--border)', borderRadius: 6,
+            padding: '5px 8px', color: 'var(--text)',
+          }}
+        />
+        <input
+          type="date" value={dueDate}
+          onChange={e => setDueDate(e.target.value)}
+          style={{
+            fontSize: 11, background: 'var(--bg)',
+            border: '1px solid var(--border)', borderRadius: 6,
+            padding: '5px 6px', color: 'var(--text3)', width: 130,
+          }}
+        />
+      </div>
+      {/* Assignee pills */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+        {TEAM.map(person => {
+          const sel = assignees.includes(person);
+          return (
+            <button key={person} onClick={() => toggleAssignee(person)}
+              style={{
+                fontSize: 11, borderRadius: 99, padding: '2px 9px', cursor: 'pointer',
+                background: sel ? '#4ef0c020' : 'var(--bg)',
+                border: `1px solid ${sel ? '#4ef0c060' : 'var(--border)'}`,
+                color: sel ? '#4ef0c0' : 'var(--text3)',
+              }}>
+              {person}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <button className="btn" style={{ fontSize: 12 }} onClick={onCancel}>Cancel</button>
+        <button className="btn btn-accent" style={{ fontSize: 12 }}
+          onClick={handleAdd} disabled={saving || !name.trim()}>
+          {saving ? '…' : 'Add task'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -112,6 +197,7 @@ function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
 // ─────────────────────────────────────────────
 function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDelete }) {
   const [tasks, setTasks] = useState([]);
+  const [completions, setCompletions] = useState({}); // { taskId: { person: bool } }
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -124,29 +210,67 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
   });
   const [saving, setSaving] = useState(false);
 
-  async function loadTasks() {
-    const { data } = await supabase
-      .from('module_tasks')
-      .select('*')
-      .eq('module_id', module.id)
-      .order('created_at');
-    setTasks(data || []);
-    setTasksLoaded(true);
-  }
-
-  // Load tasks on mount
   React.useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from('module_tasks')
-        .select('*')
-        .eq('module_id', module.id)
-        .order('created_at');
-      setTasks(data || []);
+      const [{ data: taskData }, { data: compData }] = await Promise.all([
+        supabase.from('module_tasks').select('*').eq('module_id', module.id).order('created_at'),
+        supabase.from('module_task_completions').select('*').in(
+          'task_id',
+          [] // will be re-fetched below once tasks are known
+        ),
+      ]);
+      const tasks = taskData || [];
+      setTasks(tasks);
+
+      if (tasks.length > 0) {
+        const { data: cData } = await supabase
+          .from('module_task_completions')
+          .select('*')
+          .in('task_id', tasks.map(t => t.id));
+        const map = {};
+        (cData || []).forEach(c => {
+          if (!map[c.task_id]) map[c.task_id] = {};
+          map[c.task_id][c.person] = c.completed;
+        });
+        setCompletions(map);
+      }
       setTasksLoaded(true);
     }
     load();
   }, [module.id]);
+
+  async function reloadTasks() {
+    const [{ data: taskData }, { data: cData }] = await Promise.all([
+      supabase.from('module_tasks').select('*').eq('module_id', module.id).order('created_at'),
+      supabase.from('module_task_completions').select('*'),
+    ]);
+    const tasks = taskData || [];
+    setTasks(tasks);
+    if (tasks.length > 0) {
+      const { data: compData } = await supabase
+        .from('module_task_completions').select('*')
+        .in('task_id', tasks.map(t => t.id));
+      const map = {};
+      (compData || []).forEach(c => {
+        if (!map[c.task_id]) map[c.task_id] = {};
+        map[c.task_id][c.person] = c.completed;
+      });
+      setCompletions(map);
+    }
+  }
+
+  async function handleToggleCompletion(taskId, person, currentDone) {
+    const newDone = !currentDone;
+    // Upsert completion record
+    await supabase.from('module_task_completions').upsert(
+      { task_id: taskId, person, completed: newDone, completed_at: newDone ? new Date().toISOString() : null },
+      { onConflict: 'task_id,person' }
+    );
+    setCompletions(prev => ({
+      ...prev,
+      [taskId]: { ...(prev[taskId] || {}), [person]: newDone },
+    }));
+  }
 
   async function handleSaveModule() {
     setSaving(true);
@@ -163,17 +287,17 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
     setSaving(false);
   }
 
-  async function handleToggleTask(taskId, done) {
-    await supabase.from('module_tasks').update({ done: !done }).eq('id', taskId);
-    setTasks(ts => ts.map(t => t.id === taskId ? { ...t, done: !done } : t));
-  }
-
   async function handleDeleteTask(taskId) {
     await supabase.from('module_tasks').delete().eq('id', taskId);
     setTasks(ts => ts.filter(t => t.id !== taskId));
+    setCompletions(prev => { const n = {...prev}; delete n[taskId]; return n; });
   }
 
-  const doneTasks = tasks.filter(t => t.done).length;
+  const doneTasks = tasks.filter(t => {
+    const assignees = t.assigned_to || [];
+    if (assignees.length === 0) return false;
+    return assignees.every(p => completions[t.id]?.[p]);
+  }).length;
 
   return (
     <div style={{
@@ -306,7 +430,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
       {/* Description (read-only) */}
       {!editing && module.description && (
         <div style={{ padding: '7px 12px', fontSize: 12, color: 'var(--text2)', borderBottom: '1px solid var(--border)', lineHeight: 1.5 }}>
-          {module.description}
+          <RichText text={module.description} />
         </div>
       )}
 
@@ -329,7 +453,13 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
         )}
 
         {tasks.map(t => (
-          <ModuleTaskRow key={t.id} task={t} onToggle={handleToggleTask} onDelete={handleDeleteTask} />
+          <ModuleTaskRow
+            key={t.id}
+            task={t}
+            completions={completions[t.id] || {}}
+            onToggleCompletion={handleToggleCompletion}
+            onDelete={handleDeleteTask}
+          />
         ))}
 
         {showAddTask && (
@@ -337,7 +467,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
             moduleId={module.id}
             courseId={courseId}
             quarterId={quarterId}
-            onAdded={() => { setShowAddTask(false); loadTasks(); }}
+            onAdded={() => { setShowAddTask(false); reloadTasks(); }}
             onCancel={() => setShowAddTask(false)}
           />
         )}
