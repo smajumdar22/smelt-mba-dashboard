@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { Assignments } from './components/Assignments';
 import { Courses, Meetings, Team } from './components/Views';
 import MeetingNotes from './components/MeetingNotes';
+import ExportButton from './components/ExportButton';
 
 import './App.css';
 
@@ -65,6 +66,13 @@ export default function App() {
           <div className="quarter-label">{data.activeQuarter?.label || 'No quarter'}</div>
         </div>
         <div className="header-actions">
+          <ExportButton
+            quarterId={data.activeQid}
+            quarterLabel={data.activeQuarter?.label}
+            allQuarters={data.quarters}
+            courses={data.allCourses}
+            assignments={data.assignments}
+          />
           <button className="btn-icon" onClick={() => openModal('quarter')} title="Quarters">⚡</button>
           <button className="btn-icon" onClick={() => {
             const type = view === 'courses' ? 'course' : view === 'meetings' ? 'meeting' : 'assignment';
@@ -116,7 +124,7 @@ export default function App() {
       )}
       {view === 'courses' && (
         <Courses
-          courses={data.allCourses}        // ← ALL courses across all quarters
+          courses={data.allCourses}
           assignments={data.assignments}
           quarters={data.quarters}
           activeQid={data.activeQid}
