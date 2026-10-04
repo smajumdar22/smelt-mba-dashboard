@@ -1,5 +1,5 @@
 -- ============================================
--- SEATTLE MELT MBA TRACKER — Supabase Schema
+-- TMMBA TEAM TRACKER — Supabase Schema
 -- Run this in your Supabase SQL Editor
 -- ============================================
 
@@ -7,6 +7,7 @@
 create table if not exists quarters (
   id uuid default gen_random_uuid() primary key,
   label text not null,
+  team text default 'seattle-melt', -- team id from src/lib/constants.js
   active boolean default false,
   created_at timestamptz default now()
 );

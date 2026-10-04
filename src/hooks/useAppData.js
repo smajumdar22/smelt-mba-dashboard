@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { quarterTeam, DEFAULT_TEAM_ID } from '../lib/constants';
 
-export function useAppData() {
+export function useAppData(teamId) {
   const [quarters, setQuarters] = useState([]);
   const [courses, setCourses] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -23,16 +24,12 @@ export function useAppData() {
       setCourses(c.data || []);
       setAssignments(a.data || []);
       setMeetings(m.data || []);
-      if (q.data?.length && !activeQid) {
-        const active = q.data.find(x => x.active) || q.data[0];
-        setActiveQid(active.id);
-      }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [activeQid]);
+  }, []);
 
   useEffect(() => {
     fetchAll();
@@ -48,11 +45,31 @@ export function useAppData() {
     return () => supabase.removeChannel(channel);
   }, [fetchAll]);
 
-  // ── Quarters ──
+  // ── Quarters (scoped to the active team) ──
+  const teamQuarters = quarters.filter(q => quarterTeam(q) === teamId);
+
+  // Keep the selected quarter inside the active team
+  useEffect(() => {
+    if (loading) return;
+    if (teamQuarters.some(q => q.id === activeQid)) return;
+    const next = teamQuarters.find(q => q.active) || teamQuarters[teamQuarters.length - 1];
+    setActiveQid(next ? next.id : null);
+  }, [teamId, loading, quarters]);
+
   async function addQuarter(label) {
-    const { error } = await supabase.from('quarters').insert({ label, active: false });
-    if (error) throw error;
+    const { data, error } = await supabase
+      .from('quarters')
+      .insert({ label, active: false, team: teamId })
+      .select()
+      .single();
+    if (error) {
+      if (/team/i.test(error.message)) {
+        throw new Error('Run supabase-teams-migration.sql in Supabase first (adds the team column).');
+      }
+      throw error;
+    }
     await fetchAll();
+    if (data?.id) setActiveQid(data.id);
   }
 
   function switchQuarter(id) { setActiveQid(id); }
@@ -110,10 +127,15 @@ export function useAppData() {
   const qMeetings = meetings.filter(m => m.quarter_id === activeQid);
   const activeQuarter = quarters.find(q => q.id === activeQid);
 
+  const teamQuarterIds = new Set(teamQuarters.map(q => q.id));
+  const teamCourses = courses.filter(c =>
+    c.quarter_id ? teamQuarterIds.has(c.quarter_id) : teamId === DEFAULT_TEAM_ID
+  );
+
   return {
     loading, error,
-    quarters, activeQid, activeQuarter, switchQuarter, addQuarter,
-    courses: qCourses, allCourses: courses, addCourse, updateCourse, deleteCourse,
+    quarters: teamQuarters, activeQid, activeQuarter, switchQuarter, addQuarter,
+    courses: qCourses, allCourses: teamCourses, addCourse, updateCourse, deleteCourse,
     assignments: qAssignments, addAssignment, updateAssignment, deleteAssignment, toggleDone,
     meetings: qMeetings, addMeeting, deleteMeeting,
   };

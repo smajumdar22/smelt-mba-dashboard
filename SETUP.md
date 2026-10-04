@@ -1,6 +1,6 @@
-# 🎓 Seattle Melt MBA Tracker — Setup Guide
+# 🎓 TMMBA Team Tracker — Setup Guide
 
-A real-time shared assignment tracker for the Seattle Melt MBA team.
+A real-time shared assignment tracker for TMMBA teams (Seattle Melt and Malamutes).
 Built with React + Supabase. Free to host, real-time sync for all 6 members.
 
 ---

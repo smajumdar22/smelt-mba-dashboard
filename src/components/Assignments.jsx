@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { dueColor, dueLabel, TEAM, AVATAR_COLORS } from '../lib/constants';
+import { dueColor, dueLabel, AVATAR_COLORS } from '../lib/constants';
+import { useTeam } from '../lib/team';
 import { supabase } from '../lib/supabase';
 
 function priorityBadge(p) {
@@ -11,8 +12,8 @@ function priorityBadge(p) {
 const PRIORITY_DOT = { high: 'var(--danger)', medium: 'var(--accent3)', low: 'var(--text3)' };
 const DUE_BADGE = { overdue: 'badge-red', today: 'badge-yellow', soon: 'badge-orange', ok: 'badge-gray' };
 
-function avatarColor(name) {
-  const i = TEAM.indexOf(name);
+function avatarColor(name, members) {
+  const i = members.indexOf(name);
   return AVATAR_COLORS[i >= 0 ? i % AVATAR_COLORS.length : 0];
 }
 
@@ -105,6 +106,7 @@ function CompletionPills({ assignmentId, assignees, onAllDone }) {
 
 // ── Assignee avatar stack ────────────────────────────────
 function AvatarStack({ names }) {
+  const members = useTeam().members;
   if (!names?.length) return null;
   const shown = names.slice(0, 3);
   const extra = names.length - shown.length;
@@ -115,8 +117,8 @@ function AvatarStack({ names }) {
           key={name}
           className="task-avatar"
           style={{
-            background: `${avatarColor(name)}25`,
-            color: avatarColor(name),
+            background: `${avatarColor(name, members)}25`,
+            color: avatarColor(name, members),
             zIndex: shown.length - i,
           }}
           title={name}

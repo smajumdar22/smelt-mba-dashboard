@@ -1,15 +1,18 @@
 import React from 'react';
-import { dueColor, dueLabel, TEAM, AVATAR_COLORS } from '../lib/constants';
+import { dueColor, dueLabel, AVATAR_COLORS } from '../lib/constants';
+import { useTeam } from '../lib/team';
 
 function priorityBadge(p) {
   const map = { high: 'badge-red', medium: 'badge-orange', low: 'badge-gray' };
-  return <span className={`badge ${map[p]||'badge-gray'}`}>{p?.toUpperCase().slice(0,3)||'MED'}</span>;
+  const label = { high: 'High', medium: 'Med', low: 'Low' };
+  return <span className={`badge ${map[p]||'badge-gray'}`}>{label[p]||'Med'}</span>;
 }
 function typeBadge(t) {
   return <span className={`badge ${t==='discussion'?'badge-green':'badge-yellow'}`}>{t==='discussion'?'DISC':'ASGN'}</span>;
 }
 
 export function Dashboard({ assignments, meetings, courses, onSwitchView, onToggleDone }) {
+  const { name: teamName, members: TEAM } = useTeam();
   const total = assignments.length;
   const done = assignments.filter(a => a.done).length;
   const overdue = assignments.filter(a => !a.done && dueColor(a.due_date) === 'overdue').length;
@@ -25,18 +28,18 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
       {/* Stats row */}
       <div className="stats-row">
         <div className="stat-card">
-          <div className="stat-label">PROGRESS</div>
+          <div className="stat-label">Progress</div>
           <div className="stat-value">{pct}%</div>
           <div className="progress-bar"><div className="progress-fill" style={{width:`${pct}%`}} /></div>
           <div className="stat-sub">{done}/{total} done</div>
         </div>
         <div className="stats-col">
           <div className="stat-card mini">
-            <div className="stat-label">OVERDUE</div>
+            <div className="stat-label">Overdue</div>
             <div className="stat-value" style={{color:overdue?'var(--danger)':'var(--text2)'}}>{overdue}</div>
           </div>
           <div className="stat-card mini">
-            <div className="stat-label">DUE TODAY</div>
+            <div className="stat-label">Due today</div>
             <div className="stat-value" style={{color:todayCount?'var(--accent)':'var(--text2)'}}>{todayCount}</div>
           </div>
         </div>
@@ -85,7 +88,7 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
             ? <div className="empty-state" style={{padding:'16px'}}>No meetings yet</div>
             : meetings.slice(0, 3).map(m => (
                 <div key={m.id} className="meeting-item">
-                  <div className="meeting-icon-wrap">🎥</div>
+                  <div className="meeting-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3v10l-6-3" /></svg></div>
                   <div className="meeting-info">
                     <div className="meeting-name">{m.name}</div>
                     <div className="meeting-time">{m.day} · {m.time}{m.recurring ? ' · Weekly' : ''}</div>
@@ -99,7 +102,7 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
       {/* Team mini */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Team — Seattle Melt</span>
+          <span className="card-title">Team — {teamName}</span>
           <button className="btn btn-ghost btn-sm" onClick={() => onSwitchView('team')}>Detail →</button>
         </div>
         <div className="card-body">
