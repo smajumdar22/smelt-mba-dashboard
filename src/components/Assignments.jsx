@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { dueColor, dueLabel } from '../lib/constants';
+import { dueColor, dueLabel, TEAM, AVATAR_COLORS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 
 function priorityBadge(p) {
@@ -7,8 +7,13 @@ function priorityBadge(p) {
   const label = { high: 'HIGH', medium: 'MED', low: 'LOW' };
   return <span className={`badge ${map[p]||'badge-gray'}`}>{label[p]||'MED'}</span>;
 }
-function typeBadge(t) {
-  return <span className={`badge ${t==='discussion'?'badge-green':'badge-yellow'}`}>{t==='discussion'?'DISC':'ASGN'}</span>;
+
+const PRIORITY_DOT = { high: 'var(--danger)', medium: 'var(--accent3)', low: 'var(--text3)' };
+const DUE_BADGE = { overdue: 'badge-red', today: 'badge-yellow', soon: 'badge-orange', ok: 'badge-gray' };
+
+function avatarColor(name) {
+  const i = TEAM.indexOf(name);
+  return AVATAR_COLORS[i >= 0 ? i % AVATAR_COLORS.length : 0];
 }
 
 // ── Per-person completion pills ──────────────────────────
@@ -98,6 +103,81 @@ function CompletionPills({ assignmentId, assignees, onAllDone }) {
   );
 }
 
+// ── Assignee avatar stack ────────────────────────────────
+function AvatarStack({ names }) {
+  if (!names?.length) return null;
+  const shown = names.slice(0, 3);
+  const extra = names.length - shown.length;
+  return (
+    <div className="task-avatars">
+      {shown.map((name, i) => (
+        <div
+          key={name}
+          className="task-avatar"
+          style={{
+            background: `${avatarColor(name)}25`,
+            color: avatarColor(name),
+            zIndex: shown.length - i,
+          }}
+          title={name}
+        >
+          {name.slice(0, 2).toUpperCase()}
+        </div>
+      ))}
+      {extra > 0 && (
+        <div className="task-avatar task-avatar-extra" title={names.slice(3).join(', ')}>
+          +{extra}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Single task row ───────────────────────────────────────
+function TaskRow({ a, onOpen, onToggleDone }) {
+  const dc = dueColor(a.due_date);
+  return (
+    <div className="task-row" onClick={() => onOpen(a.id)}>
+      <div
+        className={`assign-check ${a.done ? 'done' : ''}`}
+        onClick={e => { e.stopPropagation(); onToggleDone(a.id, a.done); }}
+      >
+        {a.done && <span style={{fontSize:11,color:'#000'}}>✓</span>}
+      </div>
+      <div className="task-content">
+        <div className="task-title-row">
+          <span className={`task-name ${a.done ? 'done' : ''}`}>{a.name}</span>
+          <span className="priority-dot" style={{ background: PRIORITY_DOT[a.priority] || PRIORITY_DOT.medium }} />
+        </div>
+        <div className="task-meta-row">
+          <span
+            className={`task-type-dot ${a.type === 'discussion' ? 'type-discussion' : 'type-assignment'}`}
+            title={a.type === 'discussion' ? 'Discussion' : 'Assignment'}
+          />
+          {a.done ? (
+            <span className="hint" style={{ color: 'var(--text3)' }}>Completed</span>
+          ) : (
+            <span className={`badge ${DUE_BADGE[dc]}`}>{dueLabel(a.due_date)}</span>
+          )}
+          {a.canvas_url && (
+            <a
+              href={a.canvas_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="canvas-link"
+              onClick={e => e.stopPropagation()}
+            >
+              Canvas↗
+            </a>
+          )}
+          <div className="task-meta-spacer" />
+          <AvatarStack names={a.assigned_to} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Assignments component ───────────────────────────
 export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone }) {
   const [tab, setTab] = useState('pending');
@@ -120,6 +200,14 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
     byCourse[a.course_id].push(a);
   });
 
+  // Totals per course, independent of the active tab filter — always reflects true progress
+  const totalsByCourse = {};
+  assignments.forEach(a => {
+    if (!totalsByCourse[a.course_id]) totalsByCourse[a.course_id] = { done: 0, total: 0 };
+    totalsByCourse[a.course_id].total += 1;
+    if (a.done) totalsByCourse[a.course_id].done += 1;
+  });
+
   const detailItem = detail ? assignments.find(x => x.id === detail) : null;
   const detailCourse = detailItem ? courses.find(c => c.id === detailItem.course_id) : null;
   const hasMultipleAssignees = (detailItem?.assigned_to?.length || 0) > 1;
@@ -139,44 +227,26 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
       {courses.map(c => {
         const items = byCourse[c.id] || [];
         if (!items.length) return null;
+        const totals = totalsByCourse[c.id] || { done: 0, total: 0 };
+        const pct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
         return (
           <div key={c.id} className="card">
-            <div className="card-header">
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <div className="course-dot" style={{background:c.color}} />
-                <span className="card-title">{c.code}</span>
+            <div className="card-header task-group-header">
+              <div className="task-group-top">
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <div className="course-dot" style={{background:c.color}} />
+                  <span className="card-title">{c.code}</span>
+                </div>
+                <span className="hint">{totals.done} of {totals.total} done</span>
               </div>
-              <span className="hint">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${pct}%`, background: c.color }} />
+              </div>
             </div>
             <div className="card-body list-body">
-              {items.map(a => {
-                const dc = dueColor(a.due_date);
-                return (
-                  <div key={a.id} className="assign-item" onClick={() => setDetail(a.id)}>
-                    <div className={`assign-check ${a.done?'done':''}`}
-                      onClick={e => { e.stopPropagation(); onToggleDone(a.id, a.done); }}>
-                      {a.done && <span style={{fontSize:11,color:'#000'}}>✓</span>}
-                    </div>
-                    <div className="assign-meta">
-                      <div className={`assign-name ${a.done?'done':''}`}>{a.name}</div>
-                      <div className="assign-sub">
-                        {typeBadge(a.type)}
-                        <span className={`hint due-${dc}`}>{dueLabel(a.due_date)}</span>
-                        {a.assigned_to?.length > 0 && (
-                          <span className="hint">
-                            {a.assigned_to.slice(0,2).join(', ')}{a.assigned_to.length > 2 ? ` +${a.assigned_to.length - 2}` : ''}
-                          </span>
-                        )}
-                        {a.canvas_url && (
-                          <a href={a.canvas_url} target="_blank" rel="noopener noreferrer"
-                            className="canvas-link" onClick={e => e.stopPropagation()}>Canvas↗</a>
-                        )}
-                      </div>
-                    </div>
-                    {priorityBadge(a.priority)}
-                  </div>
-                );
-              })}
+              {items.map(a => (
+                <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} />
+              ))}
             </div>
           </div>
         );
