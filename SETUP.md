@@ -1,6 +1,6 @@
-# 🎓 Seattle Melt MBA Tracker — Setup Guide
+# 🎓 TMMBA Team Tracker — Setup Guide
 
-A real-time shared assignment tracker for the Seattle Melt MBA team.
+A real-time shared assignment tracker for TMMBA teams (Seattle Melt and Malamutes).
 Built with React + Supabase. Free to host, real-time sync for all 6 members.
 
 ---
@@ -136,3 +136,16 @@ At the start of each quarter:
 ---
 
 Made for Seattle Melt MBA Team 🏔️
+
+---
+
+## Teams
+
+Teams are defined in `src/lib/constants.js` (`TEAMS`). Each quarter belongs to one team,
+and courses, tasks and meetings follow their quarter. Use the switcher under the team name
+to change teams; the choice is remembered on each device.
+
+**Existing database:** run `supabase-teams-migration.sql` once in the Supabase SQL Editor.
+It adds the `team` column; existing quarters stay with Seattle Melt.
+
+To rename a team, change its `name` (keep the `id` the same).

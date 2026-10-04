@@ -492,7 +492,7 @@ export default function ExportButton({ quarterId, quarterLabel, allQuarters, cou
             background: isDone ? 'var(--accent)' : isError ? 'transparent' : 'transparent',
             border: `1px solid ${isError ? 'var(--danger)' : isDone ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: 8,
-            color: isDone ? '#000' : isError ? 'var(--danger)' : 'var(--text)',
+            color: isDone ? 'var(--accent-ink)' : isError ? 'var(--danger)' : 'var(--text)',
             fontSize: 12,
             fontWeight: 500,
             cursor: isLoading ? 'not-allowed' : 'pointer',
@@ -502,10 +502,7 @@ export default function ExportButton({ quarterId, quarterLabel, allQuarters, cou
             whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: 14 }}>
-            {isDone ? '✅' : isError ? '⚠️' : '📊'}
-          </span>
-          {isLoading ? step : isDone ? 'Exported!' : isError ? 'Failed' : 'Export Excel'}
+          {isLoading ? step : isDone ? 'Exported' : isError ? 'Failed' : 'Download'}
         </button>
       </div>
 

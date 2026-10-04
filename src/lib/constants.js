@@ -1,7 +1,30 @@
-export const TEAM = ['Ranjith', 'Jane', 'Shubham', 'Yu', 'Galen', 'Chris'];
+// ── Teams ──
+// Each quarter belongs to one team (quarters.team in Supabase).
+// Quarters created before teams existed have no team and count as the default team.
+export const TEAMS = [
+  {
+    id: 'seattle-melt',
+    name: 'Seattle Melt',
+    members: ['Ranjith', 'Jane', 'Shubham', 'Yu', 'Galen', 'Chris'],
+  },
+  {
+    id: 'malamutes',
+    name: 'Malamutes', // working name — rename here once the team decides
+    members: ['Anne', 'Bill', 'Cintha', 'Ezhilan', 'Fedor', 'Shubham'],
+  },
+];
+
+export const DEFAULT_TEAM_ID = TEAMS[0].id;
+
+export function quarterTeam(q) {
+  return q?.team || DEFAULT_TEAM_ID;
+}
+
+// Kept for any code that still imports it; prefer useTeam().members.
+export const TEAM = TEAMS[0].members;
 
 export const AVATAR_COLORS = [
-  '#4ef0c0', '#e8f548', '#f07840', '#a0b4f0', '#f0a0e0', '#80d0a0'
+  '#8fd6c0', '#e9d68a', '#f0a37a', '#a9b8f5', '#e3a6d6', '#9fd09a'
 ];
 
 export const COURSE_COLORS = [

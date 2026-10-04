@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { TEAM, AVATAR_COLORS } from '../lib/constants';
+import { AVATAR_COLORS } from '../lib/constants';
+import { useTeam } from '../lib/team';
 import { supabase } from '../lib/supabase';
 
 // ─────────────────────────────────────────────
@@ -113,6 +114,7 @@ function ModuleTaskRow({ task, completions, onToggleCompletion, onDelete }) {
 // ADD TASK FORM
 // ─────────────────────────────────────────────
 function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
+  const TEAM = useTeam().members;
   const [name, setName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [assignees, setAssignees] = useState([]);
@@ -777,7 +779,7 @@ export function Meetings({ meetings, onAdd, onDelete }) {
           <div className="card-body list-body">
             {meetings.map(m => (
               <div key={m.id} className="meeting-item">
-                <div className="meeting-icon-wrap">🎥</div>
+                <div className="meeting-icon-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3v10l-6-3" /></svg></div>
                 <div className="meeting-info">
                   <div className="meeting-name">{m.name}</div>
                   <div className="meeting-time">{m.day} · {m.time}{m.recurring ? ' · Weekly' : ''}</div>
@@ -810,13 +812,14 @@ export function Meetings({ meetings, onAdd, onDelete }) {
 }
 
 // ─────────────────────────────────────────────
-// TEAM — unchanged
+// TEAM
 // ─────────────────────────────────────────────
 export function Team({ assignments }) {
+  const { name: teamName, members: TEAM } = useTeam();
   return (
     <div className="content">
       <div className="card">
-        <div className="card-header"><span className="card-title">Seattle Melt</span></div>
+        <div className="card-header"><span className="card-title">{teamName}</span></div>
         <div className="card-body">
           <div className="member-grid">
             {TEAM.map((name, i) => {
@@ -865,7 +868,7 @@ export function Team({ assignments }) {
             if (!myOpen.length) return (
               <div key={name} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 13 }}>{name}</span>
-                <span className="badge badge-green">All done!</span>
+                <span className="badge badge-green">No open tasks</span>
               </div>
             );
             return (

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { TEAM, COURSE_COLORS, DAYS } from '../lib/constants';
+import { COURSE_COLORS, DAYS } from '../lib/constants';
+import { useTeam } from '../lib/team';
 
 export function Modal({ type, data, onClose, actions, courses }) {
+  const TEAM = useTeam().members;
   const [form, setForm] = useState({});
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [selectedColor, setSelectedColor] = useState(COURSE_COLORS[0]);
