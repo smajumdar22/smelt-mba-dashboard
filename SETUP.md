@@ -11,10 +11,10 @@ Built with React + Supabase. Free to host, real-time sync for all 6 members.
 
 ## STEP 1 — Create a free Supabase project
 
-1. Go to https://supabase.com and sign up (free)
+1. Go to https://supabase.com and sign up
 2. Click **New Project**
-3. Name it: `smelt-mba`
-4. Choose **US West** region (closest to Seattle)
+3. Name it: ``
+4. Choose **US** region
 5. Set a database password and save it
 6. Wait ~2 minutes for your project to provision
 
@@ -27,7 +27,7 @@ Built with React + Supabase. Free to host, real-time sync for all 6 members.
 3. Open the file `supabase-setup.sql` from this folder
 4. Copy the entire contents and paste into the SQL Editor
 5. Click **Run** (green button)
-6. You should see "Success. No rows returned" — that's correct!
+6. You should see "Success. No rows returned
 
 ---
 
@@ -41,51 +41,29 @@ Built with React + Supabase. Free to host, real-time sync for all 6 members.
 
 ## STEP 4 — Configure the app
 
-1. In the `smelt-mba` folder, copy `.env.example` to `.env.local`:
-   ```
-   cp .env.example .env.local
-   ```
+1. In the `project` folder, create `.env.local`:
 2. Open `.env.local` and fill in your values:
    ```
    REACT_APP_SUPABASE_URL=https://YOUR-PROJECT-ID.supabase.co
    REACT_APP_SUPABASE_ANON_KEY=eyJhbGci...your-full-key-here
    ```
-
 ---
 
 ## STEP 5 — Test locally (optional)
 
 Make sure you have Node.js 18+ installed, then:
 ```bash
-cd smelt-mba
+cd project
 npm install
 npm start
 ```
-Opens at http://localhost:3000 — try adding a course and assignment!
+Opens at http://localhost:3000
 
 ---
 
-## STEP 6 — Deploy to Netlify (free hosting)
-
-### Option A: Drag & Drop (easiest, 2 minutes)
-1. Run `npm run build` — creates a `build/` folder
-2. Go to https://netlify.com → sign up free
-3. Drag the `build/` folder onto the Netlify deploy zone
-4. Your app is live! Copy the URL (e.g. `https://smelt-mba.netlify.app`)
-
-### Option B: Git + Auto-deploy (recommended for updates)
-1. Push this folder to a GitHub repo
-2. In Netlify: **Add new site → Import from Git**
-3. Connect your GitHub repo
-4. Set build settings:
-   - **Build command:** `npm run build`
-   - **Publish directory:** `build`
-5. Under **Site settings → Environment variables**, add:
-   - `REACT_APP_SUPABASE_URL` → your Supabase URL
-   - `REACT_APP_SUPABASE_ANON_KEY` → your anon key
-6. Click **Deploy site**
-
+## STEP 6 — Deploy app
 ---
+<<<<<<< HEAD
 
 ## STEP 7 — Share with the team
 
@@ -228,3 +206,5 @@ the code can't be delivered, so stick to email until this is set up.
 Sign in, set a reminder 2 minutes out, and wait. If nothing arrives, check
 **Edge Functions → send-reminders → Logs**, or the `last_error` column in the
 `reminders` table.
+=======
+>>>>>>> a170555b8de634ee58fd76b511dc8c801a72f8d2
