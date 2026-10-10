@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { dueColor, dueLabel, AVATAR_COLORS } from '../lib/constants';
+import { dueColor, dueLabel, byDue, formatTime, AVATAR_COLORS } from '../lib/constants';
 import { useTeam } from '../lib/team';
 import { supabase } from '../lib/supabase';
 import { ReminderModal } from './Reminders';
@@ -88,6 +88,54 @@ function CompletionPills({ assignment, completions }) {
   );
 }
 
+// ── Change the due date / time right from the task ──────
+function DueEditor({ assignment, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const [date, setDate] = useState(assignment.due_date || '');
+  const [time, setTime] = useState((assignment.due_time || '').slice(0, 5));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDate(assignment.due_date || '');
+    setTime((assignment.due_time || '').slice(0, 5));
+  }, [assignment.due_date, assignment.due_time]);
+
+  async function save() {
+    setSaving(true); setError('');
+    try {
+      await onUpdate(assignment.id, { due_date: date || null, due_time: date && time ? time : null });
+      setEditing(false);
+    } catch (e) {
+      setError(/due_time/.test(e.message || '') ? 'Run supabase-due-times.sql in Supabase first.' : e.message);
+    }
+    setSaving(false);
+  }
+
+  if (!editing) {
+    return (
+      <button className="link-btn" onClick={() => setEditing(true)}>
+        {assignment.due_date ? 'Change' : 'Add due date'}
+      </button>
+    );
+  }
+  return (
+    <div className="due-editor">
+      {error && <div className="form-error">{error}</div>}
+      <div className="inline-form">
+        <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} aria-label="Due date" />
+        <input className="form-input" type="time" value={time} disabled={!date} onChange={e => setTime(e.target.value)} aria-label="Due time" />
+      </div>
+      <div className="inline-form" style={{ marginTop: 8, justifyContent: 'flex-end' }}>
+        {time && <button className="btn btn-ghost btn-sm" onClick={() => setTime('')}>No time</button>}
+        <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
+        <button className="btn btn-accent btn-sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      </div>
+      <div className="hint" style={{ marginTop: 6 }}>Reminders set "before the due date" move with it.</div>
+    </div>
+  );
+}
+
 // ── Assignee avatar stack ────────────────────────────────
 function AvatarStack({ names, finished }) {
   const members = useTeam().members;
@@ -121,7 +169,7 @@ function AvatarStack({ names, finished }) {
 
 // ── Single task row ───────────────────────────────────────
 function TaskRow({ a, onOpen, onToggleDone, completions }) {
-  const dc = dueColor(a.due_date);
+  const dc = dueColor(a.due_date, a.due_time);
   const shared = isShared(a);
   const prog = shared ? completions.progress(a) : null;
   return (
@@ -157,7 +205,7 @@ function TaskRow({ a, onOpen, onToggleDone, completions }) {
           {a.done ? (
             <span className="hint" style={{ color: 'var(--text3)' }}>Completed</span>
           ) : (
-            <span className={`badge ${DUE_BADGE[dc]}`}>{dueLabel(a.due_date)}</span>
+            <span className={`badge ${DUE_BADGE[dc]}`}>{dueLabel(a.due_date, a.due_time)}</span>
           )}
           {a.canvas_url && (
             <a
@@ -182,7 +230,7 @@ function TaskRow({ a, onOpen, onToggleDone, completions }) {
 }
 
 // ── Main Assignments component ───────────────────────────
-export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone, completions }) {
+export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone, onUpdate, completions }) {
   const [tab, setTab] = useState('pending');
   const [detail, setDetail] = useState(null);
   const [reminderFor, setReminderFor] = useState(null);
@@ -191,12 +239,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
   if (tab === 'pending') filtered = assignments.filter(a => !a.done);
   else if (tab === 'done') filtered = assignments.filter(a => a.done);
 
-  const sorted = [...filtered].sort((a, b) => {
-    if (!a.due_date && !b.due_date) return 0;
-    if (!a.due_date) return 1;
-    if (!b.due_date) return -1;
-    return new Date(a.due_date) - new Date(b.due_date);
-  });
+  const sorted = [...filtered].sort(byDue);
 
   const byCourse = {};
   sorted.forEach(a => {
@@ -230,7 +273,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
 
       {courses.map(c => {
         const items = byCourse[c.id] || [];
-        if (!items.length) return null;
+        if (!items.length && tab === 'done') return null;
         const totals = totalsByCourse[c.id] || { done: 0, total: 0 };
         const pct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
         return (
@@ -239,7 +282,8 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
               <div className="task-group-top">
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <div className="course-dot" style={{background:c.color}} />
-                  <span className="card-title">{c.code}</span>
+                  <span className="card-title">{c.code || c.name}</span>
+                  {c.code && <span className="hint task-group-name">{c.name}</span>}
                 </div>
                 <span className="hint">{totals.done} of {totals.total} done</span>
               </div>
@@ -248,6 +292,12 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
               </div>
             </div>
             <div className="card-body list-body">
+              {items.length === 0 && (
+                <div className="course-empty">
+                  <span className="hint">{tab === 'pending' ? 'Nothing pending' : 'No tasks yet'}</span>
+                  <button className="link-btn" onClick={() => onAdd({ course_id: c.id })}>+ Add task</button>
+                </div>
+              )}
               {items.map(a => (
                 <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} completions={completions} />
               ))}
@@ -256,7 +306,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
         );
       })}
 
-      {Object.keys(byCourse).length === 0 && (
+      {courses.length === 0 && (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon">✅</div>
@@ -292,12 +342,24 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
                 {detailItem.type==='discussion'?'DISCUSSION':'ASSIGNMENT'}
               </span>
               {priorityBadge(detailItem.priority)}
-              <span className={`badge badge-${dueColor(detailItem.due_date)==='overdue'?'red':dueColor(detailItem.due_date)==='today'?'yellow':dueColor(detailItem.due_date)==='soon'?'orange':'gray'}`}>
-                {dueLabel(detailItem.due_date)}
+              <span className={`badge badge-${dueColor(detailItem.due_date, detailItem.due_time)==='overdue'?'red':dueColor(detailItem.due_date, detailItem.due_time)==='today'?'yellow':dueColor(detailItem.due_date, detailItem.due_time)==='soon'?'orange':'gray'}`}>
+                {dueLabel(detailItem.due_date, detailItem.due_time)}
               </span>
             </div>
 
             <div className="detail-rows">
+              <div className="detail-row">
+                <span className="detail-label">Due</span>
+                <span style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-start',flex:1}}>
+                  <span style={{display:'flex',gap:10,alignItems:'baseline'}}>
+                    <span>{detailItem.due_date
+                      ? new Date(`${detailItem.due_date}T00:00:00`).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })
+                        + (detailItem.due_time ? `, ${formatTime(detailItem.due_time)}` : ' (end of day)')
+                      : 'No due date'}</span>
+                    {onUpdate && <DueEditor assignment={detailItem} onUpdate={onUpdate} />}
+                  </span>
+                </span>
+              </div>
               {detailCourse && (
                 <div className="detail-row">
                   <span className="detail-label">Course</span>

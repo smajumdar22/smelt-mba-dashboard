@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AVATAR_COLORS } from '../lib/constants';
+import { AVATAR_COLORS, dueColor, dueLabel, byDue } from '../lib/constants';
 import { useTeam } from '../lib/team';
 import { supabase } from '../lib/supabase';
 import { ReminderModal } from './Reminders';
@@ -571,7 +571,40 @@ function AddModuleForm({ courseId, quarterId, onAdded, onCancel }) {
 // ─────────────────────────────────────────────
 // COURSE CARD
 // ─────────────────────────────────────────────
-function CourseCard({ course, assignments, quarterId, onEdit }) {
+const DUE_TONE = { overdue: 'badge-red', today: 'badge-yellow', soon: 'badge-orange', ok: 'badge-gray' };
+
+// ── The course's assignments, listed right under it ──
+function CourseTasks({ course, items, onAddTask, onEditTask }) {
+  const [showDone, setShowDone] = useState(false);
+  const open = items.filter(a => !a.done).sort(byDue);
+  const done = items.filter(a => a.done).sort(byDue);
+  const shown = showDone ? [...open, ...done] : open;
+
+  return (
+    <div className="course-tasks" onClick={e => e.stopPropagation()}>
+      <div className="course-tasks-head">
+        <span>Assignments · {open.length} open</span>
+        {onAddTask && <button className="link-btn" style={{ color: course.color }} onClick={() => onAddTask(course.id)}>+ Add</button>}
+      </div>
+      {shown.length === 0 && <div className="hint" style={{ padding: '4px 0' }}>{items.length ? 'All done 🎉' : 'No assignments yet.'}</div>}
+      {shown.map(a => (
+        <button key={a.id} className={`course-task ${a.done ? 'done' : ''}`} onClick={() => onEditTask && onEditTask(a)}>
+          <span className="course-task-name">{a.done ? '✓ ' : ''}{a.name}</span>
+          {!a.done && (
+            <span className={`badge ${DUE_TONE[dueColor(a.due_date, a.due_time)]}`}>{dueLabel(a.due_date, a.due_time)}</span>
+          )}
+        </button>
+      ))}
+      {done.length > 0 && (
+        <button className="link-btn" style={{ marginTop: 6 }} onClick={() => setShowDone(v => !v)}>
+          {showDone ? 'Hide finished' : `Show ${done.length} finished`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CourseCard({ course, assignments, quarterId, onEdit, onAddTask, onEditTask }) {
   const [expanded, setExpanded] = useState(false);
   const [modules, setModules] = useState([]);
   const [loadingMods, setLoadingMods] = useState(false);
@@ -646,6 +679,8 @@ function CourseCard({ course, assignments, quarterId, onEdit }) {
         </div>
       </div>
 
+      <CourseTasks course={course} items={items} onAddTask={onAddTask} onEditTask={onEditTask} />
+
       {/* Modules panel */}
       {expanded && (
         <div style={{ borderTop: `2px solid ${course.color}30`, background: 'var(--surface)', padding: '10px 12px 12px' }}
@@ -705,7 +740,7 @@ function CourseCard({ course, assignments, quarterId, onEdit }) {
 // ─────────────────────────────────────────────
 // COURSES VIEW — grouped by quarter
 // ─────────────────────────────────────────────
-export function Courses({ courses, assignments, quarters, activeQid, onAdd, onEdit }) {
+export function Courses({ courses, assignments, quarters, activeQid, onAdd, onEdit, onAddTask, onEditTask }) {
   const coursesByQuarter = {};
   courses.forEach(c => {
     const qid = c.quarter_id || '__none__';
@@ -758,6 +793,8 @@ export function Courses({ courses, assignments, quarters, activeQid, onAdd, onEd
                 assignments={assignments}
                 quarterId={q.id}
                 onEdit={onEdit}
+                onAddTask={q.id === activeQid ? onAddTask : null}
+                onEditTask={onEditTask}
               />
             ))}
           </div>

@@ -136,10 +136,14 @@ const clip = (s: string | null | undefined, n: number) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 
-function formatDue(date: string) {
-  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
+function formatDue(date: string, time?: string | null) {
+  const day = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
     weekday: "short", month: "short", day: "numeric", timeZone: "UTC",
   });
+  if (!time) return day;
+  const [h, m] = time.slice(0, 5).split(":").map(Number);
+  const t = `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  return `${day}, ${t}`;
 }
 
 function dueText(days: number) {
@@ -171,10 +175,10 @@ async function sendOneOffs(db: SupabaseClient, getUser: (id: string) => Promise<
     if (!claimed?.length) continue;
 
     try {
-      let a: { done: boolean; notes: string | null; canvas_url: string | null; due_date: string | null } | null = null;
+      let a: { done: boolean; notes: string | null; canvas_url: string | null; due_date: string | null; due_time: string | null } | null = null;
       if (r.assignment_id) {
         ({ data: a } = await db.from("assignments")
-          .select("done,notes,canvas_url,due_date").eq("id", r.assignment_id).maybeSingle());
+          .select("done,notes,canvas_url,due_date,due_time").eq("id", r.assignment_id).maybeSingle());
         if (!a || a.done) {
           await db.from("reminders").update({ last_error: "Skipped: assignment done" }).eq("id", r.id);
           skipped++;
@@ -195,7 +199,7 @@ async function sendOneOffs(db: SupabaseClient, getUser: (id: string) => Promise<
       const user = await getUser(r.user_id);
       if (!user) throw new Error("User not found");
       const to = destination(user, r.channel);
-      const due = a?.due_date ? `Due ${formatDue(a.due_date)}` : "";
+      const due = a?.due_date ? `Due ${formatDue(a.due_date, a.due_time)}` : "";
       if (r.channel === "sms") {
         const extra = [r.message, due, clip(a?.notes, 120)].filter(Boolean).join(" · ");
         await sendText(to, `Reminder: ${r.course_name}${extra ? ` - ${extra}` : ""}`);
@@ -233,7 +237,7 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
   const until = new Date(Date.now() + (maxDays + 1) * 86400000).toISOString().slice(0, 10);
 
   const [{ data: assignments }, { data: courses }] = await Promise.all([
-    db.from("assignments").select("id,name,due_date,done,assigned_to,course_id,notes,canvas_url")
+    db.from("assignments").select("id,name,due_date,due_time,done,assigned_to,course_id,notes,canvas_url")
       .eq("done", false).gte("due_date", from).lte("due_date", until),
     db.from("courses").select("id,code,name"),
   ]);
@@ -266,6 +270,8 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
       const items = (assignments ?? [])
         .map((a) => ({ ...a, days: daysBetween(now.date, a.due_date) }))
         .filter((a) => a.days >= 0 && a.days <= s.days_before)
+        // due earlier today and already past: don't send "due today"
+        .filter((a) => !(a.days === 0 && a.due_time && toMinutes(String(a.due_time).slice(0, 5)) <= now.minutes))
         .filter((a) => !member || !finished.has(`${a.id}:${member}`))
         .filter((a) => {
           const pick = pickOf.get(`${s.user_id}:${a.id}`);
@@ -296,11 +302,11 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
           if (!user) throw new Error("User not found");
           const to = destination(user, channel);
           const lines = items.map((a) =>
-            `${courseLabel.get(a.course_id) ?? "Course"}: ${a.name} (${dueText(a.days)})`
+            `${courseLabel.get(a.course_id) ?? "Course"}: ${a.name} (${dueText(a.days)}${a.due_time ? ` ${formatDue(a.due_date, a.due_time).split(", ").pop()}` : ""})`
           );
           const blocks: Block[] = items.map((a) => ({
             title: a.name,
-            meta: `${courseLabel.get(a.course_id) ?? "Course"} · ${dueText(a.days)} (${formatDue(a.due_date)})`,
+            meta: `${courseLabel.get(a.course_id) ?? "Course"} · ${dueText(a.days)} (${formatDue(a.due_date, a.due_time)})`,
             body: clip(a.notes, 1500) || undefined,
             link: a.canvas_url ?? undefined,
           }));

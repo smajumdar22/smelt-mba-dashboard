@@ -33,6 +33,7 @@ export function Modal({ type, data, onClose, actions, courses }) {
           type: form.type || 'assignment',
           course_id: form.course_id || courses[0]?.id,
           due_date: form.due_date || null,
+          due_time: form.due_date && form.due_time ? form.due_time : null,
           priority: form.priority || 'medium',
           assigned_to: selectedMembers,
           canvas_url: form.canvas_url || '',
@@ -66,7 +67,9 @@ export function Modal({ type, data, onClose, actions, courses }) {
       }
       onClose();
     } catch (e) {
-      setError(e.message);
+      setError(/due_time/.test(e.message || '')
+        ? 'Run supabase-due-times.sql in Supabase first (adds due times).'
+        : e.message);
     } finally {
       setSaving(false);
     }
@@ -125,12 +128,29 @@ export function Modal({ type, data, onClose, actions, courses }) {
               {courses.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
             </select>
           </div>
-          <div className="form-group">
-            <label className="form-label">Due Date</label>
-            <input className="form-input" type="date" value={form.due_date||''} onChange={e=>set('due_date',e.target.value)} />
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Due date</label>
+              <input className="form-input" type="date" value={form.due_date||''} onChange={e=>set('due_date',e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Due time (optional)</label>
+              <input className="form-input" type="time" value={(form.due_time||'').slice(0,5)}
+                disabled={!form.due_date} onChange={e=>set('due_time',e.target.value)} />
+            </div>
           </div>
+          {form.due_date && !form.due_time && (
+            <div className="hint" style={{marginTop:-6,marginBottom:12}}>No time set: treated as due by 11:59 PM.</div>
+          )}
           <div className="form-group">
             <label className="form-label">Assigned to</label>
+            <label className="toggle-row" style={{paddingTop:0}}>
+              <input type="checkbox"
+                checked={TEAM.length > 0 && TEAM.every(n => selectedMembers.includes(n))}
+                ref={el => { if (el) el.indeterminate = selectedMembers.length > 0 && !TEAM.every(n => selectedMembers.includes(n)); }}
+                onChange={e => setSelectedMembers(e.target.checked ? [...TEAM] : [])} />
+              <span>Everyone ({TEAM.length})</span>
+            </label>
             <div className="member-toggles">
               {TEAM.map(name => (
                 <button key={name} className={`member-toggle ${selectedMembers.includes(name)?'active':''}`}

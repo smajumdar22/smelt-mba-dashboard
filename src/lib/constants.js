@@ -34,8 +34,26 @@ export const COURSE_COLORS = [
 
 export const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-export function dueColor(d) {
+// Due dates are a date plus an optional time ("HH:MM" or "HH:MM:SS").
+// With no time, the task is treated as due at the end of that day.
+export const DEFAULT_DUE_TIME = '23:59';
+
+export function dueAt(date, time) {
+  if (!date) return null;
+  return new Date(`${date}T${(time || DEFAULT_DUE_TIME).slice(0, 5)}:00`);
+}
+
+export function formatTime(time) {
+  if (!time) return '';
+  const [h, m] = time.slice(0, 5).split(':').map(Number);
+  const d = new Date(); d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+export function dueColor(d, t) {
   if (!d) return 'ok';
+  const now = new Date();
+  if (t && dueAt(d, t) < now) return 'overdue';
   const today = new Date(); today.setHours(0,0,0,0);
   const due = new Date(d + 'T00:00:00');
   const diff = Math.floor((due - today) / 86400000);
@@ -45,15 +63,25 @@ export function dueColor(d) {
   return 'ok';
 }
 
-export function dueLabel(d) {
+export function dueLabel(d, t) {
   if (!d) return 'No date';
+  const at = t ? ` ${formatTime(t)}` : '';
   const today = new Date(); today.setHours(0,0,0,0);
   const due = new Date(d + 'T00:00:00');
   const diff = Math.floor((due - today) / 86400000);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
-  if (diff === 0) return 'Due today';
-  if (diff === 1) return 'Due tomorrow';
-  return `Due ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  if (diff === 0) return t && dueAt(d, t) < new Date() ? `Overdue (was${at})` : `Due today${at}`;
+  if (diff === 1) return `Due tomorrow${at}`;
+  return `Due ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${at}`;
+}
+
+// Sort helper: earliest due first, undated last.
+export function byDue(a, b) {
+  const x = dueAt(a.due_date, a.due_time), y = dueAt(b.due_date, b.due_time);
+  if (!x && !y) return 0;
+  if (!x) return 1;
+  if (!y) return -1;
+  return x - y;
 }
 
 export function uid() {

@@ -187,9 +187,10 @@ export default function App() {
         <Assignments
           assignments={data.assignments}
           courses={data.courses}
-          onAdd={() => openModal('assignment')}
+          onAdd={(preset) => openModal('assignment', preset && preset.course_id ? preset : null)}
           onEdit={(a) => openModal('assignment', a)}
           onToggleDone={data.toggleDone}
+          onUpdate={data.updateAssignment}
           completions={completions}
         />
       )}
@@ -201,6 +202,8 @@ export default function App() {
           activeQid={data.activeQid}
           onAdd={() => openModal('course')}
           onEdit={(c) => openModal('course', c)}
+          onAddTask={(courseId) => openModal('assignment', { course_id: courseId })}
+          onEditTask={(a) => openModal('assignment', a)}
         />
       )}
       {hasQuarter && view === 'meetings' && (
