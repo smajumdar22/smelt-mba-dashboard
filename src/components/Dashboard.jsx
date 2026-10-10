@@ -1,5 +1,5 @@
 import React from 'react';
-import { dueColor, dueLabel, AVATAR_COLORS } from '../lib/constants';
+import { dueColor, dueLabel, byDue, AVATAR_COLORS } from '../lib/constants';
 import { useTeam } from '../lib/team';
 import { isShared } from '../lib/completions';
 
@@ -16,12 +16,12 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
   const { name: teamName, members: TEAM } = useTeam();
   const total = assignments.length;
   const done = assignments.filter(a => a.done).length;
-  const overdue = assignments.filter(a => !a.done && dueColor(a.due_date) === 'overdue').length;
-  const todayCount = assignments.filter(a => !a.done && dueColor(a.due_date) === 'today').length;
+  const overdue = assignments.filter(a => !a.done && dueColor(a.due_date, a.due_time) === 'overdue').length;
+  const todayCount = assignments.filter(a => !a.done && dueColor(a.due_date, a.due_time) === 'today').length;
   const pct = total ? Math.round(done / total * 100) : 0;
   const upcoming = assignments
     .filter(a => !a.done)
-    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    .sort(byDue)
     .slice(0, 5);
 
   return (
@@ -57,7 +57,7 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
             ? <div className="empty-state"><div className="empty-icon">🎉</div>All clear!</div>
             : upcoming.map(a => {
                 const c = courses.find(x => x.id === a.course_id);
-                const dc = dueColor(a.due_date);
+                const dc = dueColor(a.due_date, a.due_time);
                 return (
                   <div key={a.id} className="assign-item">
                     {isShared(a) && !a.done ? (
@@ -77,7 +77,7 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
                       <div className={`assign-name ${a.done?'done':''}`}>{a.name}</div>
                       <div className="assign-sub">
                         {typeBadge(a.type)}
-                        <span className={`hint due-${dc}`}>{dueLabel(a.due_date)}</span>
+                        <span className={`hint due-${dc}`}>{dueLabel(a.due_date, a.due_time)}</span>
                         {c && <span className="hint" style={{color:c.color}}>·&nbsp;{c.code}</span>}
                       </div>
                     </div>

@@ -462,3 +462,34 @@ textarea.form-input { resize: vertical; min-height: 70px; }
   transform: translate(7px, 7px); background: var(--surface); border-radius: 50%; line-height: 1;
 }
 .task-avatar { position: relative; }
+.due-editor { width: 100%; }
+.due-editor .inline-form .form-input { min-width: 0; }
+
+/* ── Assignments listed under each course ── */
+.task-group-name { margin-left: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.course-empty { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
+.course-tasks { border-top: 1px solid var(--border); padding: 10px 14px 12px; }
+.course-tasks-head {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+  font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .05em;
+}
+.course-task {
+  display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px;
+  background: none; border: none; border-top: 1px solid var(--border); padding: 8px 0;
+  color: var(--text); font-size: 13px; text-align: left; cursor: pointer;
+}
+.course-task:first-of-type { border-top: none; }
+.course-task:hover .course-task-name { color: var(--accent); }
+.course-task.done { color: var(--text3); }
+.course-task-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.course-task .badge { flex-shrink: 0; }
+
+/* ── Reminder time choices ── */
+.offset-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.offset-chip {
+  border: 1px solid var(--border); background: var(--surface2); color: var(--text2);
+  border-radius: 99px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+}
+.offset-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.offset-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.offset-chip:disabled { opacity: .35; cursor: not-allowed; text-decoration: line-through; }

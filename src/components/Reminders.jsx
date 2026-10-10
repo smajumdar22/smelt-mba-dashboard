@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSession, sendLoginLink, signOut, DEFAULT_SETTINGS } from '../lib/auth';
-import { TEAMS } from '../lib/constants';
+import { TEAMS, dueAt } from '../lib/constants';
 
 // Is this assignment in someone's daily reminders?
 // A per-assignment pick (true/false) wins; otherwise their scope decides.
@@ -151,14 +151,42 @@ function PhoneVerify({ onVerified }) {
 }
 
 // ── Step 2: create and list one-off reminders for a course or an assignment ──
+// "Before it's due" choices, in minutes.
+const OFFSET_PRESETS = [
+  [10080, '1 week'], [4320, '3 days'], [2880, '2 days'], [1440, '1 day'],
+  [720, '12 hours'], [360, '6 hours'], [180, '3 hours'], [60, '1 hour'], [30, '30 min'], [0, 'At due time'],
+];
+const UNIT_MIN = { minutes: 1, hours: 60, days: 1440, weeks: 10080 };
+
+export function offsetLabel(min) {
+  if (min === 0) return 'At due time';
+  const preset = OFFSET_PRESETS.find(([m]) => m === min);
+  if (preset) return `${preset[1]} before`;
+  if (min % 10080 === 0) return `${min / 10080} week${min / 10080 > 1 ? 's' : ''} before`;
+  if (min % 1440 === 0) return `${min / 1440} day${min / 1440 > 1 ? 's' : ''} before`;
+  if (min % 60 === 0) return `${min / 60} hour${min / 60 > 1 ? 's' : ''} before`;
+  return `${min} min before`;
+}
+
+function fmtWhen(d) {
+  return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 function ReminderForm({ course, assignment, session }) {
   const [user, setUser] = useState(session.user);
   const [channel, setChannel] = useState('email');
+  const due = assignment ? dueAt(assignment.due_date, assignment.due_time) : null;
+  const [mode, setMode] = useState(due ? 'before' : 'times'); // 'before' | 'times'
+  const [offsets, setOffsets] = useState([]);           // minutes before due
+  const [customN, setCustomN] = useState('2');
+  const [customUnit, setCustomUnit] = useState('hours');
+  const [times, setTimes] = useState([]);                // specific datetime-local strings
   const [when, setWhen] = useState(() => defaultTime(assignment?.due_date));
   const [message, setMessage] = useState('');
   const [items, setItems] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     let q = supabase.from('reminders').select('*').eq('sent', false).order('remind_at');
@@ -179,28 +207,64 @@ function ReminderForm({ course, assignment, session }) {
   }
 
   const phoneReady = !!user.phone && !!user.phone_confirmed_at;
+  const now = new Date();
+  const atFor = min => new Date(due.getTime() - min * 60000);
+  const toggleOffset = min => setOffsets(xs => xs.includes(min) ? xs.filter(x => x !== min) : [...xs, min]);
+
+  function addCustom() {
+    const n = Number(customN);
+    if (!Number.isFinite(n) || n <= 0) return setError('Enter how long before, e.g. 2 hours');
+    const min = Math.round(n * UNIT_MIN[customUnit]);
+    if (min > 60 * 24 * 60) return setError('That is more than 60 days before');
+    if (atFor(min) <= now) return setError(`${offsetLabel(min)} has already passed`);
+    setError('');
+    setOffsets(xs => xs.includes(min) ? xs : [...xs, min]);
+  }
+
+  function addTime() {
+    const at = new Date(when);
+    if (Number.isNaN(at.getTime())) return setError('Pick a date and time');
+    if (at <= now) return setError('Pick a time in the future');
+    setError('');
+    setTimes(xs => xs.includes(when) ? xs : [...xs, when].sort());
+  }
+
+  // Everything that will be created when you press the button.
+  const planned = mode === 'before' && due
+    ? [...offsets].sort((a, b) => b - a).map(min => ({ at: atFor(min), offset: min, label: offsetLabel(min) }))
+    : [...new Set([...times, ...(when ? [when] : [])])]
+        .map(t => ({ at: new Date(t), offset: null, label: null }))
+        .filter(p => !Number.isNaN(p.at.getTime()));
 
   async function save(e) {
     e.preventDefault();
-    setError('');
-    const at = new Date(when);
-    if (Number.isNaN(at.getTime())) return setError('Pick a date and time');
-    if (at <= new Date()) return setError('Pick a time in the future');
+    setError(''); setNotice('');
+    const future = planned.filter(p => p.at > new Date());
+    if (!future.length) {
+      return setError(mode === 'before' ? 'Pick at least one option that is still ahead' : 'Pick a time in the future');
+    }
     setSaving(true);
     const courseLabel = course ? (course.code || course.name) : '';
-    const { error } = await supabase.from('reminders').insert({
+    const rows = future.map(p => ({
       course_id: course?.id ?? assignment?.course_id ?? null,
       assignment_id: assignment?.id ?? null,
       course_name: assignment
         ? [courseLabel, assignment.name].filter(Boolean).join(' · ')
         : (course.code ? `${course.code} · ${course.name}` : course.name),
       channel,
-      remind_at: at.toISOString(),
+      remind_at: p.at.toISOString(),
       message: message.trim(),
-    });
+      ...(p.offset !== null ? { offset_minutes: p.offset } : {}),
+    }));
+    const { error } = await supabase.from('reminders').insert(rows);
     setSaving(false);
-    if (error) return setError(error.message);
-    setMessage('');
+    if (error) {
+      return setError(/offset_minutes/.test(error.message)
+        ? 'Run supabase-due-times.sql in Supabase first.'
+        : error.message);
+    }
+    setNotice(`${rows.length} reminder${rows.length > 1 ? 's' : ''} set.`);
+    setMessage(''); setOffsets([]); setTimes([]);
     setWhen(defaultTime(assignment?.due_date));
     load();
   }
@@ -219,6 +283,7 @@ function ReminderForm({ course, assignment, session }) {
       </div>
 
       {error && <div className="form-error">{error}</div>}
+      {notice && <div className="reminder-note" style={{ color: 'var(--accent2)' }}>{notice}</div>}
 
       <form onSubmit={save}>
         <div className="form-group">
@@ -238,18 +303,87 @@ function ReminderForm({ course, assignment, session }) {
         {channel === 'sms' && !phoneReady
           ? <PhoneVerify onVerified={refreshUser} />
           : <>
-              <div className="form-group">
-                <label className="form-label">When</label>
-                <input className="form-input" type="datetime-local" required
-                  value={when} onChange={e => setWhen(e.target.value)} />
-              </div>
+              {assignment && (
+                <div className="segmented" role="tablist" aria-label="How to set the time" style={{ marginBottom: 12 }}>
+                  <button type="button" role="tab" aria-selected={mode === 'before'} disabled={!due}
+                    className={`segment ${mode === 'before' ? 'active' : ''}`} onClick={() => setMode('before')}>
+                    Before it's due
+                  </button>
+                  <button type="button" role="tab" aria-selected={mode === 'times'}
+                    className={`segment ${mode === 'times' ? 'active' : ''}`} onClick={() => setMode('times')}>
+                    Pick dates &amp; times
+                  </button>
+                </div>
+              )}
+
+              {mode === 'before' && due ? (
+                <div className="form-group">
+                  <label className="form-label">
+                    Remind me before {fmtWhen(due)}{assignment.due_time ? '' : ' (end of day)'}. Pick as many as you like
+                  </label>
+                  <div className="offset-chips">
+                    {OFFSET_PRESETS.map(([min, label]) => {
+                      const past = atFor(min) <= now;
+                      const on = offsets.includes(min);
+                      return (
+                        <button key={min} type="button" disabled={past} aria-pressed={on}
+                          className={`offset-chip ${on ? 'on' : ''}`} onClick={() => toggleOffset(min)}
+                          title={past ? 'Already passed' : fmtWhen(atFor(min))}>
+                          {on ? '✓ ' : ''}{label}
+                        </button>
+                      );
+                    })}
+                    {offsets.filter(m => !OFFSET_PRESETS.some(([p]) => p === m)).map(min => (
+                      <button key={min} type="button" aria-pressed className="offset-chip on" onClick={() => toggleOffset(min)}>
+                        ✓ {offsetLabel(min).replace(' before', '')}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="inline-form" style={{ marginTop: 10 }}>
+                    <input className="form-input" type="number" min="1" step="1" style={{ maxWidth: 80 }}
+                      aria-label="How long before" value={customN} onChange={e => setCustomN(e.target.value)} />
+                    <select className="form-input" aria-label="Unit" value={customUnit} onChange={e => setCustomUnit(e.target.value)}>
+                      <option value="minutes">minutes before</option>
+                      <option value="hours">hours before</option>
+                      <option value="days">days before</option>
+                      <option value="weeks">weeks before</option>
+                    </select>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={addCustom}>+ Add</button>
+                  </div>
+                  <span className="hint">They move automatically if the due date or time changes.</span>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label className="form-label">When</label>
+                  <div className="inline-form">
+                    <input className="form-input" type="datetime-local"
+                      value={when} onChange={e => setWhen(e.target.value)} />
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={addTime}>+ Add another</button>
+                  </div>
+                  {times.length > 0 && (
+                    <div className="offset-chips" style={{ marginTop: 8 }}>
+                      {times.map(t => (
+                        <button key={t} type="button" className="offset-chip on" aria-label={`Remove ${fmtWhen(new Date(t))}`}
+                          onClick={() => setTimes(xs => xs.filter(x => x !== t))}>
+                          {fmtWhen(new Date(t))} ×
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!due && assignment && <span className="hint">Add a due date to this assignment to use "Before it's due".</span>}
+                </div>
+              )}
+
               <div className="form-group">
                 <label className="form-label">Note (optional)</label>
                 <input className="form-input" maxLength={300} placeholder="e.g. Submit case write-up"
                   value={message} onChange={e => setMessage(e.target.value)} />
               </div>
-              <button className="btn btn-accent full-width" type="submit" disabled={saving}>
-                {saving ? 'Saving…' : 'Set reminder'}
+              <button className="btn btn-accent full-width" type="submit" disabled={saving || planned.length === 0}>
+                {saving ? 'Saving…'
+                  : planned.length > 1 ? `Set ${planned.length} reminders`
+                  : planned.length === 1 ? 'Set reminder'
+                  : 'Pick when to be reminded'}
               </button>
             </>}
       </form>
@@ -261,12 +395,11 @@ function ReminderForm({ course, assignment, session }) {
           <div key={r.id} className="reminder-row">
             <div>
               <div className="reminder-when">
-                {new Date(r.remind_at).toLocaleString('en-US', {
-                  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                })}
+                {fmtWhen(new Date(r.remind_at))}
                 <span className="badge badge-gray" style={{ marginLeft: 8 }}>{r.channel === 'sms' ? 'Text' : 'Email'}</span>
                 {r.attempts >= 3 && <span className="badge badge-red" style={{ marginLeft: 6 }} title={r.last_error || ''}>Couldn't send</span>}
               </div>
+              {(r.offset_minutes !== null && r.offset_minutes !== undefined) && <div className="hint">{offsetLabel(r.offset_minutes)}</div>}
               {r.message && <div className="hint">{r.message}</div>}
             </div>
             <button className="btn-icon" aria-label="Delete reminder" onClick={() => remove(r.id)}>🗑</button>
@@ -322,7 +455,7 @@ function AssignmentPicker({ userId, settings }) {
       const today = new Date();
       const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const [a, c, p] = await Promise.all([
-        supabase.from('assignments').select('id,name,due_date,course_id,assigned_to,done')
+        supabase.from('assignments').select('id,name,due_date,due_time,course_id,assigned_to,done')
           .eq('done', false).gte('due_date', iso(today)).order('due_date').limit(60),
         supabase.from('courses').select('id,code,name'),
         supabase.from('reminder_picks').select('assignment_id,included').eq('user_id', userId),
