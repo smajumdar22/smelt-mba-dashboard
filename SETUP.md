@@ -1,6 +1,6 @@
 # 🎓 TMMBA Team Tracker — Setup Guide
 
-A real-time shared assignment tracker for TMMBA teams (Seattle Melt and Malamutes).
+A real-time shared assignment tracker for TMMBA teams (Seattle Melt and Sixth Sense).
 Built with React + Supabase. Free to host, real-time sync for all 6 members.
 
 ---
@@ -149,3 +149,82 @@ to change teams; the choice is remembered on each device.
 It adds the `team` column; existing quarters stay with Seattle Melt.
 
 To rename a team, change its `name` (keep the `id` the same).
+
+---
+
+## Reminders (email or text)
+
+**Due-date reminders (automatic):** once someone signs in, they get one reminder
+a day at 9:00 AM, starting 7 days before each open assignment is due through the
+due date, by email. Each message lists everything due in that window. Finished
+assignments stop reminding. Tap the 🔔 at the top to change it: how many days
+before, extra times of day (each time = one more reminder a day), email and/or
+text, only assignments assigned to you, or turn it off.
+
+**Choosing assignments:** in 🔔 Reminder settings, "Which assignments" can be all,
+only ones assigned to you, or only the ones you pick, and the list below it lets
+you tick assignments on or off. Each assignment's **🔔 Remind me** screen also has
+an on/off switch. Reminder emails include each assignment's description (its
+Notes), due date and Canvas link.
+
+**Extra one-time reminders:** open an assignment and tap **🔔 Remind me**, or tap
+**Remind me** on a course, to add as many one-off reminders as you want.
+Reminders need sign-in: people enter their email and get a one-time login link
+(no passwords). Reminders only ever go to the signed-in person's own verified
+email or phone, so nobody can send reminders to someone else. The rest of the
+dashboard still works without signing in.
+
+### 1. Turn on sign-in
+1. Supabase → **Authentication → Sign In / Providers** → make sure **Email** is on.
+2. **Authentication → URL Configuration**:
+   - Site URL: `https://smeltdashboard.netlify.app`
+   - Redirect URLs: add `https://smeltdashboard.netlify.app/**` and `http://localhost:3000/**`
+
+### 2. Create the reminder tables
+In the SQL Editor, run these two files in order:
+1. `supabase-reminders.sql`: only the top part (everything above the SCHEDULE section)
+2. `supabase-assignment-reminders.sql`: the whole file
+3. `supabase-reminder-picks.sql`: the whole file (lets people pick which assignments remind them)
+
+### 3. Set up email sending (Resend)
+1. Sign up at https://resend.com and create an API key.
+2. Verify a domain you own under **Domains** (a `netlify.app` address won't work).
+   Until you do, Resend only delivers to your own Resend account email, which is
+   fine for testing.
+
+### 4. Deploy the sender function
+From the `smelt-mba` folder:
+```bash
+npm install -g supabase
+supabase login
+supabase link --project-ref YOUR_PROJECT_REF
+supabase secrets set CRON_SECRET=pick-a-long-random-string
+supabase secrets set RESEND_API_KEY=re_xxx
+supabase secrets set REMINDER_FROM_EMAIL="SMELT Reminders <reminders@yourdomain.com>"
+supabase secrets set APP_URL=https://smeltdashboard.netlify.app
+supabase functions deploy send-reminders --no-verify-jwt
+```
+`--no-verify-jwt` is intentional: the function checks `CRON_SECRET` instead.
+
+### 5. Run it every minute
+1. **Database → Extensions** → enable `pg_cron` and `pg_net`.
+2. In `supabase-reminders.sql`, uncomment the SCHEDULE block, fill in your project
+   ref and the same `CRON_SECRET`, and run it.
+
+### 6. Text reminders (optional)
+Texting needs Twilio. Without it, the **Text** option asks for a phone number but
+the code can't be delivered, so stick to email until this is set up.
+1. Create a Twilio account and buy a phone number. US numbers sending app texts
+   need A2P 10DLC registration (Twilio walks you through it).
+2. Supabase → **Authentication → Sign In / Providers → Phone** → turn on, choose
+   Twilio, enter your Account SID, Auth Token and number. This sends the
+   verification code when someone adds their phone.
+3. Give the sender function the same credentials:
+   ```bash
+   supabase secrets set TWILIO_ACCOUNT_SID=ACxxx TWILIO_AUTH_TOKEN=xxx TWILIO_FROM_NUMBER=+12065550123
+   ```
+
+### Test it
+Sign in, set a reminder 2 minutes out, and wait. If nothing arrives, check
+**Edge Functions → send-reminders → Logs**, or the `last_error` column in the
+`reminders` table.

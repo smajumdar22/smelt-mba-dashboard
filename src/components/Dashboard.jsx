@@ -1,6 +1,7 @@
 import React from 'react';
 import { dueColor, dueLabel, AVATAR_COLORS } from '../lib/constants';
 import { useTeam } from '../lib/team';
+import { isShared } from '../lib/completions';
 
 function priorityBadge(p) {
   const map = { high: 'badge-red', medium: 'badge-orange', low: 'badge-gray' };
@@ -11,7 +12,7 @@ function typeBadge(t) {
   return <span className={`badge ${t==='discussion'?'badge-green':'badge-yellow'}`}>{t==='discussion'?'DISC':'ASGN'}</span>;
 }
 
-export function Dashboard({ assignments, meetings, courses, onSwitchView, onToggleDone }) {
+export function Dashboard({ assignments, meetings, courses, onSwitchView, onToggleDone, completions }) {
   const { name: teamName, members: TEAM } = useTeam();
   const total = assignments.length;
   const done = assignments.filter(a => a.done).length;
@@ -59,9 +60,19 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
                 const dc = dueColor(a.due_date);
                 return (
                   <div key={a.id} className="assign-item">
-                    <div className={`assign-check ${a.done?'done':''}`} onClick={() => onToggleDone(a.id, a.done)}>
-                      {a.done && <span style={{fontSize:11,color:'#000'}}>✓</span>}
-                    </div>
+                    {isShared(a) && !a.done ? (
+                      <button className={`assign-check shared ${completions.progress(a).count ? 'partial' : ''}`}
+                        title="Shared task: open Tasks to mark your part"
+                        aria-label={`${completions.progress(a).count} of ${a.assigned_to.length} people done. Open Tasks to mark your part`}
+                        onClick={() => onSwitchView('assignments')}>
+                        {completions.progress(a).count}/{a.assigned_to.length}
+                      </button>
+                    ) : (
+                      <div className={`assign-check ${a.done?'done':''}`}
+                        onClick={() => isShared(a) ? onSwitchView('assignments') : onToggleDone(a.id, a.done)}>
+                        {a.done && <span style={{fontSize:11,color:'#000'}}>✓</span>}
+                      </div>
+                    )}
                     <div className="assign-meta">
                       <div className={`assign-name ${a.done?'done':''}`}>{a.name}</div>
                       <div className="assign-sub">

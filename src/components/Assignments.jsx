@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { dueColor, dueLabel, AVATAR_COLORS } from '../lib/constants';
 import { useTeam } from '../lib/team';
 import { supabase } from '../lib/supabase';
+import { ReminderModal } from './Reminders';
+import { isShared } from '../lib/completions';
 
 function priorityBadge(p) {
   const map = { high: 'badge-red', medium: 'badge-orange', low: 'badge-gray' };
@@ -18,56 +20,38 @@ function avatarColor(name, members) {
 }
 
 // ── Per-person completion pills ──────────────────────────
-function CompletionPills({ assignmentId, assignees, onAllDone }) {
-  const [completions, setCompletions] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    if (!assignees.length) { setLoading(false); return; }
-    const { data } = await supabase
-      .from('assignment_completions')
-      .select('*')
-      .eq('assignment_id', assignmentId);
-    const map = {};
-    (data || []).forEach(r => { map[r.person] = r.completed; });
-    setCompletions(map);
-    setLoading(false);
-  }, [assignmentId, assignees]);
-
-  useEffect(() => { load(); }, [load]);
+function CompletionPills({ assignment, completions }) {
+  const [error, setError] = useState('');
+  const { set, count, total } = completions.progress(assignment);
+  const allDone = count === total;
 
   async function toggle(person) {
-    const newDone = !completions[person];
-    await supabase.from('assignment_completions').upsert(
-      {
-        assignment_id: assignmentId,
-        person,
-        completed: newDone,
-        completed_at: newDone ? new Date().toISOString() : null,
-      },
-      { onConflict: 'assignment_id,person' }
-    );
-    const updated = { ...completions, [person]: newDone };
-    setCompletions(updated);
-    if (assignees.every(p => updated[p])) onAllDone?.();
+    setError('');
+    try { await completions.togglePerson(assignment, person); }
+    catch (e) {
+      setError(/assignment_completions/.test(e.message || '')
+        ? 'Run supabase-completions.sql in Supabase first.'
+        : (e.message || 'Could not save'));
+    }
   }
-
-  if (loading) return <div style={{fontSize:12,color:'var(--text3)'}}>Loading…</div>;
-
-  const allDone = assignees.length > 0 && assignees.every(p => completions[p]);
 
   return (
     <div>
-      <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>
-        Mark your completion
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}}>
+        <span style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+          Each person marks their part done
+        </span>
+        <span className="hint">{count} of {total} done</span>
       </div>
+      {error && <div className="form-error">{error}</div>}
       <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-        {assignees.map(person => {
-          const done = !!completions[person];
+        {assignment.assigned_to.map(person => {
+          const done = set.has(person);
           return (
             <button
               key={person}
               onClick={() => toggle(person)}
+              aria-pressed={done}
               style={{
                 display:'flex', alignItems:'center', gap:6,
                 padding:'6px 14px 6px 8px',
@@ -97,7 +81,7 @@ function CompletionPills({ assignmentId, assignees, onAllDone }) {
           background:'#4ef0c010', border:'1px solid #4ef0c030',
           borderRadius:8, padding:'6px 12px', textAlign:'center',
         }}>
-          ✅ All team members done!
+          ✅ Everyone's done, so the task is complete
         </div>
       )}
     </div>
@@ -105,7 +89,7 @@ function CompletionPills({ assignmentId, assignees, onAllDone }) {
 }
 
 // ── Assignee avatar stack ────────────────────────────────
-function AvatarStack({ names }) {
+function AvatarStack({ names, finished }) {
   const members = useTeam().members;
   if (!names?.length) return null;
   const shown = names.slice(0, 3);
@@ -115,13 +99,13 @@ function AvatarStack({ names }) {
       {shown.map((name, i) => (
         <div
           key={name}
-          className="task-avatar"
+          className={`task-avatar ${finished?.has(name) ? 'finished' : ''}`}
           style={{
             background: `${avatarColor(name, members)}25`,
             color: avatarColor(name, members),
             zIndex: shown.length - i,
           }}
-          title={name}
+          title={finished ? `${name}: ${finished.has(name) ? 'done' : 'not done yet'}` : name}
         >
           {name.slice(0, 2).toUpperCase()}
         </div>
@@ -136,16 +120,30 @@ function AvatarStack({ names }) {
 }
 
 // ── Single task row ───────────────────────────────────────
-function TaskRow({ a, onOpen, onToggleDone }) {
+function TaskRow({ a, onOpen, onToggleDone, completions }) {
   const dc = dueColor(a.due_date);
+  const shared = isShared(a);
+  const prog = shared ? completions.progress(a) : null;
   return (
     <div className="task-row" onClick={() => onOpen(a.id)}>
-      <div
-        className={`assign-check ${a.done ? 'done' : ''}`}
-        onClick={e => { e.stopPropagation(); onToggleDone(a.id, a.done); }}
-      >
-        {a.done && <span style={{fontSize:11,color:'#000'}}>✓</span>}
-      </div>
+      {shared && !a.done ? (
+        // Shared task: open it so each person can tick their own part.
+        <button
+          className={`assign-check shared ${prog.count ? 'partial' : ''}`}
+          title={`${prog.count} of ${prog.total} done. Tap to mark your part`}
+          aria-label={`${prog.count} of ${prog.total} people done. Open to mark your part`}
+          onClick={e => { e.stopPropagation(); onOpen(a.id); }}
+        >
+          {prog.count}/{prog.total}
+        </button>
+      ) : (
+        <div
+          className={`assign-check ${a.done ? 'done' : ''}`}
+          onClick={e => { e.stopPropagation(); shared ? onOpen(a.id) : onToggleDone(a.id, a.done); }}
+        >
+          {a.done && <span style={{fontSize:11,color:'#000'}}>✓</span>}
+        </div>
+      )}
       <div className="task-content">
         <div className="task-title-row">
           <span className={`task-name ${a.done ? 'done' : ''}`}>{a.name}</span>
@@ -173,7 +171,10 @@ function TaskRow({ a, onOpen, onToggleDone }) {
             </a>
           )}
           <div className="task-meta-spacer" />
-          <AvatarStack names={a.assigned_to} />
+          {shared && !a.done && (
+            <span className="hint">{prog.count} of {prog.total} done</span>
+          )}
+          <AvatarStack names={a.assigned_to} finished={shared ? prog.set : null} />
         </div>
       </div>
     </div>
@@ -181,9 +182,10 @@ function TaskRow({ a, onOpen, onToggleDone }) {
 }
 
 // ── Main Assignments component ───────────────────────────
-export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone }) {
+export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone, completions }) {
   const [tab, setTab] = useState('pending');
   const [detail, setDetail] = useState(null);
+  const [reminderFor, setReminderFor] = useState(null);
 
   let filtered = assignments;
   if (tab === 'pending') filtered = assignments.filter(a => !a.done);
@@ -247,7 +249,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
             </div>
             <div className="card-body list-body">
               {items.map(a => (
-                <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} />
+                <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} completions={completions} />
               ))}
             </div>
           </div>
@@ -265,6 +267,18 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
           </div>
         </div>
       )}
+
+      {reminderFor && (() => {
+        const a = assignments.find(x => x.id === reminderFor);
+        if (!a) return null;
+        return (
+          <ReminderModal
+            assignment={a}
+            course={courses.find(c => c.id === a.course_id)}
+            onClose={() => setReminderFor(null)}
+          />
+        );
+      })()}
 
       {/* Detail modal */}
       {detailItem && (
@@ -320,22 +334,32 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone 
                 borderRadius:10,
                 border:'1px solid var(--border)',
               }}>
-                <CompletionPills
-                  assignmentId={detailItem.id}
-                  assignees={detailItem.assigned_to}
-                  onAllDone={() => onToggleDone(detailItem.id, false)}
-                />
+                <CompletionPills assignment={detailItem} completions={completions} />
               </div>
             )}
 
             <div className="modal-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => setDetail(null)}>Close</button>
-              {!hasMultipleAssignees && (
+              {!detailItem.done && (
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => { setReminderFor(detailItem.id); setDetail(null); }}>
+                  🔔 Remind me
+                </button>
+              )}
+              {!hasMultipleAssignees ? (
                 <button
                   className={`btn ${detailItem.done?'btn-ghost':'btn-accent'} btn-sm`}
                   onClick={() => { onToggleDone(detailItem.id, detailItem.done); setDetail(null); }}
                 >
                   {detailItem.done ? 'Mark undone' : 'Mark done ✓'}
+                </button>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => completions.setEveryone(detailItem, !detailItem.done).catch(() => {})}
+                  title={detailItem.done ? 'Reopen for everyone' : 'Mark done for everyone'}
+                >
+                  {detailItem.done ? 'Reopen for all' : 'All done'}
                 </button>
               )}
               <button className="btn btn-ghost btn-sm"
