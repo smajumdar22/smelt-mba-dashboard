@@ -9,7 +9,7 @@ export const TEAMS = [
   },
   {
     id: 'malamutes',
-    name: 'Malamutes', // working name — rename here once the team decides
+    name: 'Sixth Sense', // formerly Malamutes; id kept so existing data stays linked
     members: ['Anne', 'Bill', 'Cintha', 'Ezhilan', 'Fedor', 'Shubham'],
   },
 ];

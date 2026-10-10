@@ -6,8 +6,10 @@ import { Assignments } from './components/Assignments';
 import { Courses, Meetings, Team } from './components/Views';
 import MeetingNotes from './components/MeetingNotes';
 import ExportButton from './components/ExportButton';
+import { ReminderSettingsModal } from './components/Reminders';
 import { TEAMS, DEFAULT_TEAM_ID } from './lib/constants';
 import { TeamContext } from './lib/team';
+import { useCompletions } from './lib/completions';
 
 import './App.css';
 
@@ -54,6 +56,7 @@ export default function App() {
   const data = useAppData(team.id);
   const [view, setView] = useState('dashboard');
   const [modal, setModal] = useState(null);
+  const completions = useCompletions(data.assignments, data.updateAssignment);
 
   function switchTeam(id) {
     setTeamId(id);
@@ -107,6 +110,13 @@ export default function App() {
             <h1 className="brand-team">{team.name}</h1>
           </div>
           <div className="header-actions">
+            <button className="btn-bell" onClick={() => openModal('reminders')}
+              title="Reminder settings" aria-label="Reminder settings">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+              </svg>
+            </button>
             {hasQuarter && (
               <button className="btn-add" onClick={() => {
                 const type = view === 'courses' ? 'course' : view === 'meetings' ? 'meeting' : 'assignment';
@@ -170,6 +180,7 @@ export default function App() {
           courses={data.courses}
           onSwitchView={setView}
           onToggleDone={data.toggleDone}
+          completions={completions}
         />
       )}
       {hasQuarter && view === 'assignments' && (
@@ -179,6 +190,7 @@ export default function App() {
           onAdd={() => openModal('assignment')}
           onEdit={(a) => openModal('assignment', a)}
           onToggleDone={data.toggleDone}
+          completions={completions}
         />
       )}
       {hasQuarter && view === 'courses' && (
@@ -206,7 +218,8 @@ export default function App() {
       )}
 
       {/* Modals */}
-      {modal && modal.type !== 'quarter' && (
+      {modal?.type === 'reminders' && <ReminderSettingsModal onClose={closeModal} />}
+      {modal && modal.type !== 'quarter' && modal.type !== 'reminders' && (
         <Modal
           type={modal.type}
           data={modal.data}

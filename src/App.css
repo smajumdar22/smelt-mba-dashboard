@@ -408,3 +408,57 @@ textarea.form-input { resize: vertical; min-height: 70px; }
   border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px;
 }
 .export-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+
+/* ── Reminders ── */
+.remind-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text2); font-size: 11px; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+}
+.remind-btn:hover { color: var(--accent); border-color: var(--accent); }
+.reminder-account { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.link-btn { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
+.reminder-note {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; font-size: 13px; color: var(--text2); margin-bottom: 12px;
+}
+.reminder-note strong { color: var(--text); }
+.reminder-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 0; border-top: 1px solid var(--border);
+}
+.reminder-when { font-size: 13px; color: var(--text); display: flex; align-items: center; }
+.toggle-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); padding: 6px 0; cursor: pointer; }
+.toggle-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+.time-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.time-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent-soft); color: var(--accent); border-radius: 99px;
+  padding: 4px 10px; font-size: 12px; font-weight: 600;
+}
+.time-chip button { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+.btn-bell {
+  width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text2); cursor: pointer;
+}
+.btn-bell:hover { color: var(--accent); border-color: var(--accent); }
+.picker { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; max-height: 280px; overflow-y: auto; }
+.picker-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.picker-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+.picker-row:first-of-type { border-top: none; }
+.picker-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+.picker-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Shared tasks: per-person completion ── */
+.assign-check.shared {
+  width: auto; min-width: 30px; padding: 0 5px; background: none;
+  font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3);
+  border-style: dashed;
+}
+.assign-check.shared.partial { color: #4ef0c0; border-color: #4ef0c070; border-style: solid; background: #4ef0c010; }
+.task-avatar.finished { box-shadow: 0 0 0 1.5px #4ef0c0; }
+.task-avatar.finished::after {
+  content: '✓'; position: absolute; font-size: 8px; color: #4ef0c0;
+  transform: translate(7px, 7px); background: var(--surface); border-radius: 50%; line-height: 1;
+}
+.task-avatar { position: relative; }

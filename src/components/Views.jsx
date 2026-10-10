@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AVATAR_COLORS } from '../lib/constants';
 import { useTeam } from '../lib/team';
 import { supabase } from '../lib/supabase';
+import { ReminderModal } from './Reminders';
 
 // ─────────────────────────────────────────────
 // STATUS helpers
@@ -575,6 +576,7 @@ function CourseCard({ course, assignments, quarterId, onEdit }) {
   const [modules, setModules] = useState([]);
   const [loadingMods, setLoadingMods] = useState(false);
   const [showAddModule, setShowAddModule] = useState(false);
+  const [showReminders, setShowReminders] = useState(false);
 
   const items = assignments.filter(a => a.course_id === course.id);
   const done = items.filter(a => a.done).length;
@@ -628,6 +630,15 @@ function CourseCard({ course, assignments, quarterId, onEdit }) {
               <a href={course.canvas_url} target="_blank" rel="noopener noreferrer"
                 className="canvas-link" onClick={e => e.stopPropagation()}>Canvas↗</a>
             )}
+            <button className="remind-btn" style={{ marginLeft: 'auto' }}
+              onClick={e => { e.stopPropagation(); setShowReminders(true); }}
+              aria-label={`Set a reminder for ${course.name}`}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+              </svg>
+              Remind me
+            </button>
           </div>
           <div className="progress-bar" style={{ marginTop: 8 }}>
             <div className="progress-fill" style={{ width: `${pct}%`, background: course.color }} />
@@ -685,6 +696,8 @@ function CourseCard({ course, assignments, quarterId, onEdit }) {
           ))}
         </div>
       )}
+
+      {showReminders && <ReminderModal course={course} onClose={() => setShowReminders(false)} />}
     </div>
   );
 }

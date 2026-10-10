@@ -251,3 +251,8 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 
+
+# Local secrets and Supabase CLI state
+.env.local
+.env.*.local
+supabase/.temp/
