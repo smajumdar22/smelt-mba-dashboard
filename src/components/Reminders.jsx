@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useSession, sendLoginLink, signOut, DEFAULT_SETTINGS } from '../lib/auth';
-import { TEAMS, dueAt } from '../lib/constants';
+import { useSession, sendLoginLink, signOut, signInWithoutEmail, DEFAULT_SETTINGS } from '../lib/auth';
+import { TEAMS, dueAt, TELEGRAM_BOT, SMS_ENABLED } from '../lib/constants';
 
 // Is this assignment in someone's daily reminders?
 // A per-assignment pick (true/false) wins; otherwise their scope decides.
@@ -56,6 +56,17 @@ function SignIn() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
+  async function noEmail() {
+    setSending(true); setError('');
+    const { error } = await signInWithoutEmail();
+    setSending(false);
+    if (error) {
+      setError(/anonymous/i.test(error.message)
+        ? 'Sign-in without email isn\'t turned on yet (Supabase → Authentication → Allow anonymous sign-ins).'
+        : error.message);
+    }
+  }
+
   async function submit(e) {
     e.preventDefault();
     setSending(true); setError('');
@@ -88,7 +99,120 @@ function SignIn() {
           {sending ? 'Sending…' : 'Send link'}
         </button>
       </div>
+      {TELEGRAM_BOT && (
+        <>
+          <div className="or-divider"><span>or</span></div>
+          <button type="button" className="btn btn-ghost full-width" onClick={noEmail} disabled={sending}>
+            <TelegramIcon /> Use Telegram instead (no email needed)
+          </button>
+          <p className="hint" style={{ marginTop: 8 }}>
+            Nothing personal is shared: the app only stores your Telegram chat ID and display name.
+          </p>
+        </>
+      )}
     </form>
+  );
+}
+
+function TelegramIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="12" fill="#2AABEE" />
+      <path d="M5.5 11.8l10.9-4.2c.5-.2 1 .1.8.9l-1.9 8.8c-.1.6-.5.8-1 .5l-2.9-2.1-1.4 1.3c-.2.2-.3.3-.6.3l.2-2.9 5.3-4.8c.2-.2 0-.3-.3-.1l-6.6 4.1-2.8-.9c-.6-.2-.6-.6.3-.8z" fill="#fff" />
+    </svg>
+  );
+}
+
+// ── Connect / disconnect Telegram ──
+// The app asks Supabase for a one-time code, opens the bot with it, and waits
+// for the bot to confirm the link. Only the chat ID and display name are stored.
+export function TelegramConnect({ userId, onChange }) {
+  const [link, setLink] = useState(undefined); // undefined = loading, null = not linked
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.from('telegram_links')
+      .select('chat_id,display_name').eq('user_id', userId).maybeSingle();
+    if (error) {
+      setError(/telegram_links/.test(error.message) ? 'Run supabase-telegram-teams.sql in Supabase first.' : error.message);
+      setLink(null);
+      return null;
+    }
+    setLink(data || null);
+    return data;
+  }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
+  // Tell the parent when the connection changes (not on every render).
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useEffect(() => { if (link !== undefined) onChangeRef.current?.(!!link); }, [link]);
+
+  // While waiting, check every 3 seconds for up to 3 minutes.
+  useEffect(() => {
+    if (!waiting) return;
+    let tries = 0;
+    const t = setInterval(async () => {
+      tries++;
+      const d = await load();
+      if (d || tries > 60) { setWaiting(false); clearInterval(t); }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [waiting, load]);
+
+  async function connect() {
+    setError('');
+    // Open the window right away so phones don't block it as a pop-up.
+    const win = window.open('', '_blank');
+    const { data: code, error } = await supabase.rpc('create_telegram_link_code');
+    if (error || !code) {
+      win?.close();
+      return setError(/create_telegram_link_code/.test(error?.message || '')
+        ? 'Run supabase-telegram-teams.sql in Supabase first.'
+        : (error?.message || 'Could not start connecting'));
+    }
+    const url = `https://t.me/${TELEGRAM_BOT}?start=${code}`;
+    if (win) win.location.href = url; else window.location.href = url;
+    setWaiting(true);
+  }
+
+  async function disconnect() {
+    const { error } = await supabase.from('telegram_links').delete().eq('user_id', userId);
+    if (error) return setError(error.message);
+    await supabase.from('reminder_settings').update({ by_telegram: false }).eq('user_id', userId);
+    setLink(null);
+  }
+
+  if (!TELEGRAM_BOT) return <div className="hint">Telegram isn't set up for this app yet.</div>;
+  if (link === undefined) return <div className="hint">Checking Telegram…</div>;
+
+  return (
+    <div className="reminder-note telegram-box">
+      {error && <div className="form-error">{error}</div>}
+      {link ? (
+        <div className="telegram-row">
+          <span><TelegramIcon /> Connected{link.display_name ? ` as ${link.display_name}` : ''}</span>
+          <button type="button" className="link-btn" onClick={disconnect}>Disconnect</button>
+        </div>
+      ) : waiting ? (
+        <div>
+          <div className="telegram-row"><span><TelegramIcon /> Waiting for you to tap <strong>Start</strong> in Telegram…</span></div>
+          <div className="hint" style={{ marginTop: 6 }}>
+            Didn't open? <button type="button" className="link-btn" onClick={connect}>Try again</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button type="button" className="btn btn-accent full-width" onClick={connect}>
+            <TelegramIcon /> Connect Telegram
+          </button>
+          <div className="hint" style={{ marginTop: 6 }}>
+            Opens the bot in Telegram. Tap <strong>Start</strong>, then come back here.
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -174,7 +298,8 @@ function fmtWhen(d) {
 
 function ReminderForm({ course, assignment, session }) {
   const [user, setUser] = useState(session.user);
-  const [channel, setChannel] = useState('email');
+  const [channel, setChannel] = useState(session.user.email ? 'email' : 'telegram');
+  const [tgLinked, setTgLinked] = useState(false);
   const due = assignment ? dueAt(assignment.due_date, assignment.due_time) : null;
   const [mode, setMode] = useState(due ? 'before' : 'times'); // 'before' | 'times'
   const [offsets, setOffsets] = useState([]);           // minutes before due
@@ -278,7 +403,7 @@ function ReminderForm({ course, assignment, session }) {
   return (
     <>
       <div className="reminder-account">
-        <span className="hint">Signed in as {user.email}</span>
+        <span className="hint">{user.email ? `Signed in as ${user.email}` : 'Signed in without email (this device)'}</span>
         <button className="link-btn" onClick={() => signOut()}>Sign out</button>
       </div>
 
@@ -289,19 +414,25 @@ function ReminderForm({ course, assignment, session }) {
         <div className="form-group">
           <label className="form-label">Send as</label>
           <div className="segmented" role="radiogroup" aria-label="Reminder type">
-            {[['email', 'Email'], ['sms', 'Text']].map(([id, label]) => (
+            {[
+              user.email && ['email', 'Email'],
+              TELEGRAM_BOT && ['telegram', 'Telegram'],
+              SMS_ENABLED && ['sms', 'Text'],
+            ].filter(Boolean).map(([id, label]) => (
               <button key={id} type="button" role="radio" aria-checked={channel === id}
                 className={`segment ${channel === id ? 'active' : ''}`}
                 onClick={() => setChannel(id)}>{label}</button>
             ))}
           </div>
           <span className="hint">
-            {channel === 'email' ? `To ${user.email}` : phoneReady ? `To ${user.phone}` : ''}
+            {channel === 'email' ? `To ${user.email}` : channel === 'sms' && phoneReady ? `To ${user.phone}` : ''}
           </span>
         </div>
 
+        {channel === 'telegram' && <TelegramConnect userId={user.id} onChange={setTgLinked} />}
         {channel === 'sms' && !phoneReady
           ? <PhoneVerify onVerified={refreshUser} />
+          : channel === 'telegram' && !tgLinked ? null
           : <>
               {assignment && (
                 <div className="segmented" role="tablist" aria-label="How to set the time" style={{ marginBottom: 12 }}>
@@ -550,6 +681,7 @@ function DailyToggle({ assignment, session }) {
 
 function SettingsForm({ session }) {
   const [user, setUser] = useState(session.user);
+  const [tgLinked, setTgLinked] = useState(false);
   const [s, setS] = useState(null);
   const [newTime, setNewTime] = useState('18:00');
   const [timeTouched, setTimeTouched] = useState(false); // picked a time but didn't click + Add time
@@ -563,7 +695,11 @@ function SettingsForm({ session }) {
         .from('reminder_settings').select('*').eq('user_id', session.user.id).maybeSingle();
       if (error) return setError(/reminder_settings/.test(error.message) ? SETUP_HINT : error.message);
       const row = data || { ...DEFAULT_SETTINGS };
-      setS({ ...row, scope: row.scope || (row.only_mine ? 'mine' : 'all') });
+      setS({
+        ...row,
+        by_email: session.user.email ? row.by_email : false, // no email on this account
+        scope: row.scope || (row.only_mine ? 'mine' : 'all'),
+      });
     })();
   }, [session.user.id]);
 
@@ -583,7 +719,8 @@ function SettingsForm({ session }) {
 
   async function save() {
     setError('');
-    if (s.enabled && !s.by_email && !s.by_sms) return setError('Pick email, text, or both');
+    if (s.enabled && !s.by_email && !s.by_sms && !s.by_telegram) return setError('Pick at least one way to be reminded');
+    if (s.enabled && s.by_telegram && !tgLinked) return setError('Connect Telegram first, or untick it');
     if (s.enabled && s.by_sms && !phoneReady) return setError('Verify your phone number to get texts');
     if (s.scope === 'mine' && !s.member_name) return setError('Pick which team member you are');
     // Include a time that was picked but not added with "+ Add time".
@@ -599,8 +736,9 @@ function SettingsForm({ session }) {
       enabled: s.enabled,
       days_before: s.days_before,
       times,
-      by_email: s.by_email,
+      by_email: user.email ? s.by_email : false,
       by_sms: s.by_sms,
+      by_telegram: !!s.by_telegram,
       scope: s.scope || 'all',
       only_mine: s.scope === 'mine',
       member_name: s.member_name || null,
@@ -619,12 +757,12 @@ function SettingsForm({ session }) {
     ? 'Due-date reminders are off.'
     : `${perDay} reminder${perDay > 1 ? 's' : ''} a day (${s.times.map(formatTime).join(', ')}), `
       + (s.days_before === 0 ? 'on the due date' : `from ${s.days_before} day${s.days_before > 1 ? 's' : ''} before through the due date`)
-      + `, by ${[s.by_email && 'email', s.by_sms && 'text'].filter(Boolean).join(' and ') || '—'}.`;
+      + `, by ${[s.by_email && 'email', s.by_telegram && 'Telegram', s.by_sms && 'text'].filter(Boolean).join(' and ') || '—'}.`;
 
   return (
     <>
       <div className="reminder-account">
-        <span className="hint">Signed in as {user.email}</span>
+        <span className="hint">{user.email ? `Signed in as ${user.email}` : 'Signed in without email (this device)'}</span>
         <button className="link-btn" onClick={() => signOut()}>Sign out</button>
       </div>
 
@@ -670,15 +808,29 @@ function SettingsForm({ session }) {
 
         <div className="form-group">
           <label className="form-label">Send as</label>
-          <label className="toggle-row">
-            <input type="checkbox" checked={s.by_email} onChange={e => set('by_email', e.target.checked)} />
-            <span>Email to {user.email}</span>
-          </label>
-          <label className="toggle-row">
-            <input type="checkbox" checked={s.by_sms} onChange={e => set('by_sms', e.target.checked)} />
-            <span>Text{phoneReady ? ` to ${user.phone}` : ''}</span>
-          </label>
-          {s.by_sms && !phoneReady && <PhoneVerify onVerified={refreshUser} />}
+          {user.email && (
+            <label className="toggle-row">
+              <input type="checkbox" checked={s.by_email} onChange={e => set('by_email', e.target.checked)} />
+              <span>Email to {user.email}</span>
+            </label>
+          )}
+          {TELEGRAM_BOT && (
+            <label className="toggle-row">
+              <input type="checkbox" checked={!!s.by_telegram} onChange={e => set('by_telegram', e.target.checked)} />
+              <span>Telegram</span>
+            </label>
+          )}
+          {(s.by_telegram || !user.email) && <TelegramConnect userId={user.id} onChange={linked => {
+            setTgLinked(linked);
+            if (linked && !s.by_telegram) setS(x => ({ ...x, by_telegram: true }));
+          }} />}
+          {SMS_ENABLED && (
+            <label className="toggle-row">
+              <input type="checkbox" checked={s.by_sms} onChange={e => set('by_sms', e.target.checked)} />
+              <span>Text{phoneReady ? ` to ${user.phone}` : ''}</span>
+            </label>
+          )}
+          {SMS_ENABLED && s.by_sms && !phoneReady && <PhoneVerify onVerified={refreshUser} />}
         </div>
 
         <div className="form-group">

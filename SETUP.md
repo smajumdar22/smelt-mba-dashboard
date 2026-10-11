@@ -208,3 +208,54 @@ Sign in, set a reminder 2 minutes out, and wait. If nothing arrives, check
 `reminders` table.
 =======
 >>>>>>> a170555b8de634ee58fd76b511dc8c801a72f8d2
+
+---
+
+## Telegram reminders (free, no email needed)
+
+People can get reminders in Telegram instead of (or as well as) email. In the bell
+→ Reminder settings they can choose **Use Telegram instead (no email needed)**, or
+tick **Telegram** if already signed in, then tap **Connect Telegram** and **Start**
+in the bot. Only their Telegram chat ID and display name are stored. Sending
+`/stop` to the bot turns it off.
+
+1. In Telegram, message **@BotFather** → `/newbot` → pick a name (e.g. *SMELT Reminders*)
+   and a username ending in `bot` (e.g. `SmeltRemindersBot`). Copy the **token**.
+2. Supabase → **Authentication → Sign In / Providers** → turn on **Allow anonymous sign-ins**
+   (this is what "no email needed" uses).
+3. Run `supabase-telegram-teams.sql` in the SQL Editor.
+4. In PowerShell (one line at a time):
+   ```powershell
+   npx supabase@latest secrets set TELEGRAM_BOT_TOKEN=PASTE_TOKEN
+   npx supabase@latest secrets set TELEGRAM_WEBHOOK_SECRET=PASTE_A_NEW_RANDOM_STRING
+   npx supabase@latest functions deploy telegram-webhook --no-verify-jwt
+   npx supabase@latest functions deploy send-reminders --no-verify-jwt
+   ```
+5. Tell Telegram where the bot lives (same token and secret as above):
+   ```powershell
+   Invoke-RestMethod "https://api.telegram.org/botPASTE_TOKEN/setWebhook?url=https://YOUR_PROJECT_REF.supabase.co/functions/v1/telegram-webhook&secret_token=PASTE_SAME_RANDOM_STRING"
+   ```
+   It should answer `ok: True` and "Webhook was set".
+6. Add the bot username to the app:
+   - `.env.local`: add a line `REACT_APP_TELEGRAM_BOT=SmeltRemindersBot`, then restart `npm start`
+   - Netlify → **Site configuration → Environment variables**: add the same, then redeploy
+
+## Teams channel: "due tomorrow" post
+
+Each morning (9:00 AM Pacific by default) the app posts one message per team to a
+Teams channel listing everything due the next day, with times, who it's for, and
+Canvas links. Nobody's personal info is needed.
+
+1. In Teams, open the team channel → **⋯** → **Workflows** → choose
+   **"Post to a channel when a webhook request is received"** → follow the steps and
+   copy the **URL** it gives you.
+2. In PowerShell:
+   ```powershell
+   npx supabase@latest secrets set TEAMS_WEBHOOK_SEATTLE_MELT="PASTE_URL"
+   npx supabase@latest secrets set TEAMS_WEBHOOK_MALAMUTES="PASTE_URL_FOR_SIXTH_SENSE"
+   ```
+   (Sixth Sense keeps the internal id `malamutes`.) Set only the teams you want.
+3. Optional: change the time, e.g. `npx supabase@latest secrets set TEAMS_POST_TIME=08:00`
+4. Make sure `supabase-telegram-teams.sql` has been run and `send-reminders` is redeployed.
+
+Treat the Teams URL like a password: anyone with it can post to the channel.
