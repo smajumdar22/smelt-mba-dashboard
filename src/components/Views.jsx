@@ -67,7 +67,7 @@ function ModuleTaskRow({ task, completions, onToggleCompletion, onDelete }) {
           fontWeight: allDone ? 400 : 500,
         }}>{task.name}</span>
         {task.due_date && (
-          <span style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
             📅 {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
         )}
@@ -90,7 +90,7 @@ function ModuleTaskRow({ task, completions, onToggleCompletion, onDelete }) {
                   background: done ? '#4ef0c020' : 'var(--surface)',
                   border: `1px solid ${done ? '#4ef0c060' : 'var(--border)'}`,
                   borderRadius: 99, padding: '2px 8px 2px 4px',
-                  cursor: 'pointer', fontSize: 11,
+                  cursor: 'pointer', fontSize: 13,
                   color: done ? '#4ef0c0' : 'var(--text2)',
                   transition: 'all 0.15s',
                 }}>
@@ -161,7 +161,7 @@ function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
           type="date" value={dueDate}
           onChange={e => setDueDate(e.target.value)}
           style={{
-            fontSize: 11, background: 'var(--bg)',
+            fontSize: 13, background: 'var(--bg)',
             border: '1px solid var(--border)', borderRadius: 6,
             padding: '5px 6px', color: 'var(--text3)', width: 130,
           }}
@@ -174,7 +174,7 @@ function AddTaskForm({ moduleId, courseId, quarterId, onAdded, onCancel }) {
           return (
             <button key={person} onClick={() => toggleAssignee(person)}
               style={{
-                fontSize: 11, borderRadius: 99, padding: '2px 9px', cursor: 'pointer',
+                fontSize: 13, borderRadius: 99, padding: '2px 9px', cursor: 'pointer',
                 background: sel ? '#4ef0c020' : 'var(--bg)',
                 border: `1px solid ${sel ? '#4ef0c060' : 'var(--border)'}`,
                 color: sel ? '#4ef0c0' : 'var(--text3)',
@@ -319,7 +319,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
       }}>
         {module.week_number && (
           <span style={{
-            fontSize: 10, fontWeight: 700, color: courseColor,
+            fontSize: 12, fontWeight: 700, color: courseColor,
             background: `${courseColor}20`, borderRadius: 99,
             padding: '1px 7px', whiteSpace: 'nowrap',
           }}>W{module.week_number}</span>
@@ -328,7 +328,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
           {module.name}
         </span>
         {module.start_date && (
-          <span style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 13, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
             📅 {new Date(module.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
         )}
@@ -342,7 +342,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
           }}
           onClick={e => e.stopPropagation()}
           style={{
-            fontSize: 11, background: 'var(--surface)',
+            fontSize: 13, background: 'var(--surface)',
             border: '1px solid var(--border)', borderRadius: 6,
             color: STATUS_COLORS[form.status], padding: '3px 6px', cursor: 'pointer',
           }}
@@ -368,7 +368,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
         <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>MODULE NAME</div>
+              <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 3 }}>MODULE NAME</div>
               <input
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -380,7 +380,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
               />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>WEEK #</div>
+              <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 3 }}>WEEK #</div>
               <input
                 type="number" min="1"
                 value={form.week_number}
@@ -394,7 +394,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
             </div>
           </div>
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>START DATE</div>
+            <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 3 }}>START DATE</div>
             <input
               type="date"
               value={form.start_date}
@@ -407,7 +407,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
             />
           </div>
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>DESCRIPTION</div>
+            <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 3 }}>DESCRIPTION</div>
             <textarea
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -440,7 +440,7 @@ function ModulePanel({ module, courseId, quarterId, courseColor, onUpdate, onDel
       {/* Tasks */}
       <div style={{ padding: '8px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: 13, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Tasks · {doneTasks}/{tasks.length} done
           </span>
           <button
@@ -647,7 +647,7 @@ function CourseCard({ course, assignments, quarterId, onEdit, onAddTask, onEditT
               onClick={handleExpand}
               style={{
                 background: 'none', border: '1px solid var(--border)',
-                borderRadius: 6, fontSize: 11, color: 'var(--text2)',
+                borderRadius: 6, fontSize: 13, color: 'var(--text2)',
                 padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
@@ -686,7 +686,7 @@ function CourseCard({ course, assignments, quarterId, onEdit, onAddTask, onEditT
         <div style={{ borderTop: `2px solid ${course.color}30`, background: 'var(--surface)', padding: '10px 12px 12px' }}
           onClick={e => e.stopPropagation()}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ fontSize: 13, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Modules · {completeMods}/{modules.length} complete
             </span>
             <button
@@ -779,7 +779,7 @@ export function Courses({ courses, assignments, quarters, activeQid, onAdd, onEd
               }}>{q.label}</span>
               {q.id === activeQid && (
                 <span style={{
-                  fontSize: 10, background: 'var(--accent)', color: '#000',
+                  fontSize: 12, background: 'var(--accent)', color: '#000',
                   borderRadius: 99, padding: '1px 7px', fontWeight: 700, letterSpacing: '0.05em',
                 }}>ACTIVE</span>
               )}

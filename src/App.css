@@ -7,16 +7,16 @@
   --surface: #16181d;
   --surface2: #1d2027;
   --surface3: #282c35;
-  --border: #262a32;
-  --border-strong: #343944;
+  --border: #2b2f39;
+  --border-strong: #3d4350;
   --accent: #b4a5ff;        /* soft Husky purple */
   --accent-ink: #17132b;    /* text on accent */
   --accent-soft: rgba(180,165,255,.12);
   --accent2: #6fd6b8;
   --accent3: #f0a37a;
   --text: #eceef3;
-  --text2: #a3a8b5;
-  --text3: #6c7280;
+  --text2: #c3c7d1;
+  --text3: #959bab;
   --danger: #f07272;
   --mono: 'DM Mono', ui-monospace, monospace;
   --sans: 'DM Sans', system-ui, -apple-system, sans-serif;
@@ -29,8 +29,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 button { font-family: inherit; }
@@ -493,3 +493,88 @@ textarea.form-input { resize: vertical; min-height: 70px; }
 .offset-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 .offset-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .offset-chip:disabled { opacity: .35; cursor: not-allowed; text-decoration: line-through; }
+
+
+/* ════════════════════════════════════════════
+   Readability refresh: larger text, clearer labels, more breathing room.
+   Same dark purple look; these rules override the sizes above.
+   ════════════════════════════════════════════ */
+
+/* Type scale */
+.brand-kicker { font-size: 12px; }
+.brand-team { font-size: 26px; }
+.segment { font-size: 14px; padding: 7px 14px; }
+.quarter-chip { font-size: 13px; padding: 7px 12px 7px 14px; }
+.nav-btn { font-size: 12px; min-width: 60px; padding: 9px 4px 10px; }
+.card-title { font-size: 16px; }
+.card-header { padding: 16px 18px 6px; }
+.list-body { padding: 0 18px 6px; }
+.card-body { padding: 14px 18px 18px; }
+.btn { font-size: 14px; padding: 10px 16px; border-radius: 10px; }
+.btn-sm { font-size: 13px; padding: 7px 12px; }
+.hint { font-size: 13px; }
+.badge { font-size: 12px; padding: 3px 9px; letter-spacing: .01em; }
+.stat-label { font-size: 13px; }
+.stat-sub { font-size: 12px; }
+.assign-name, .task-name { font-size: 15px; }
+.course-name { font-size: 16px; font-weight: 600; }
+.course-meta { font-size: 13px; }
+.meeting-name { font-size: 15px; }
+.meeting-time, .meeting-link { font-size: 13px; }
+.member-chip-name { font-size: 14px; }
+.member-chip-sub { font-size: 12px; }
+.tab { font-size: 14px; padding: 8px; }
+.form-label { font-size: 13px; color: var(--text2); }
+.form-input { font-size: 16px; padding: 11px 13px; } /* 16px stops phones zooming in */
+.form-error { font-size: 13px; }
+.member-toggle { font-size: 14px; padding: 7px 14px; }
+.modal-title { font-size: 20px; letter-spacing: -.01em; }
+.detail-row { font-size: 14px; }
+.empty-state { font-size: 14px; }
+.reminder-when { font-size: 14px; }
+.link-btn { font-size: 14px; }
+.canvas-link { font-size: 12px; color: #ff8a3d; font-family: var(--sans); font-weight: 600; }
+.toggle-row { font-size: 14px; }
+.offset-chip { font-size: 13px; padding: 7px 13px; }
+.picker-row { font-size: 14px; }
+.course-tasks-head { font-size: 12px; }
+.course-task { font-size: 14px; padding: 10px 0; }
+
+/* Bigger tap targets */
+.assign-check { width: 22px; height: 22px; }
+.assign-check.shared { font-size: 11px; min-width: 34px; }
+.btn-add, .btn-bell { width: 40px; height: 40px; }
+
+/* Task rows: more room, readable avatars */
+.task-row { padding: 14px 0; gap: 12px; }
+.task-meta-row { gap: 8px; margin-top: 8px; }
+.task-avatar { width: 26px; height: 26px; font-size: 10px; margin-left: -4px; border-width: 2px; }
+.task-avatar.finished::after { transform: translate(9px, 9px); font-size: 9px; }
+
+/* Text labels instead of unlabeled colored dots */
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: var(--text2);
+}
+.tag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.tag-high { color: var(--danger); }
+.tag-low { color: var(--text3); }
+.tag-discussion { color: var(--accent2); }
+
+/* Course cards: inner padding and space between cards */
+.course-card { margin-bottom: 14px; }
+.course-card .course-info { padding: 14px 16px 14px 14px; }
+.course-card .course-stripe { width: 5px; border-radius: 0; }
+.course-tasks { padding: 12px 16px 14px 19px; }
+
+/* Section labels: less shouty */
+.course-tasks-head, .picker-head .form-label { letter-spacing: .03em; }
+
+/* Modal: a bit more room */
+.modal { padding: 14px 20px 32px; }
+.modal-actions { gap: 10px; margin-top: 20px; }
+.form-group { margin-bottom: 14px; }
+.task-group-top { gap: 12px; }
+.task-group-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.task-group-title .card-title { white-space: nowrap; }
+.task-group-name { max-width: none; flex: 1; min-width: 0; }
