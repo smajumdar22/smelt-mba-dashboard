@@ -385,16 +385,24 @@ function addDays(date: string, n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-async function postTeamsDigests(db: SupabaseClient) {
+// force = true posts right away (ignores the time and the once-a-day rule) — for testing.
+async function postTeamsDigests(db: SupabaseClient, force = false) {
   const now = localNow(TEAMS_TZ);
-  const at = toMinutes(env("TEAMS_POST_TIME") || "09:00");
+  const setting = env("TEAMS_POST_TIME") || "09:00";
+  const at = toMinutes(setting);
   const late = now.minutes - at;
-  if (at < 0 || late < 0 || late >= CATCH_UP_MINUTES) return { posted: 0 };
+  const hhmm = `${String(Math.floor(now.minutes / 60)).padStart(2, "0")}:${String(now.minutes % 60).padStart(2, "0")}`;
+  if (at < 0) return { posted: 0, reason: `TEAMS_POST_TIME "${setting}" isn't a time like 09:00` };
+  if (!force && (late < 0 || late >= CATCH_UP_MINUTES)) {
+    return { posted: 0, reason: `not posting time (now ${hhmm} Pacific, set to ${setting})` };
+  }
 
   const hooks = Object.keys(TEAM_NAMES)
     .map((team) => ({ team, url: env(`TEAMS_WEBHOOK_${team.toUpperCase().replace(/-/g, "_")}`) }))
     .filter((h) => h.url);
-  if (!hooks.length) return { posted: 0 };
+  if (!hooks.length) {
+    return { posted: 0, reason: "no TEAMS_WEBHOOK_SEATTLE_MELT / TEAMS_WEBHOOK_MALAMUTES secret found" };
+  }
 
   const tomorrow = addDays(now.date, 1);
   const [{ data: assignments }, { data: quarters }, { data: courses }] = await Promise.all([
@@ -407,18 +415,27 @@ async function postTeamsDigests(db: SupabaseClient) {
   const courseLabel = new Map((courses ?? []).map((c) => [c.id, c.code || c.name]));
   const appUrl = env("APP_URL");
   let posted = 0;
+  const teams: Record<string, string> = {};
 
   for (const { team, url } of hooks) {
     const items = (assignments ?? [])
       .filter((a) => (teamOf.get(a.quarter_id) ?? DEFAULT_TEAM) === team)
       .sort((a, b) => String(a.due_time ?? "23:59").localeCompare(String(b.due_time ?? "23:59")));
-    if (!items.length) continue;
+    if (!items.length) {
+      const due = (assignments ?? []).length;
+      teams[team] = due
+        ? `nothing due ${tomorrow} for this team (${due} due for another team)`
+        : `nothing open due ${tomorrow}`;
+      continue;
+    }
 
     // Log first so the post goes out once even if runs overlap.
-    const { data: logged } = await db.from("teams_post_log")
-      .upsert({ team, day: now.date }, { onConflict: "team,day", ignoreDuplicates: true })
-      .select("team");
-    if (!logged?.length) continue;
+    if (!force) {
+      const { data: logged } = await db.from("teams_post_log")
+        .upsert({ team, day: now.date }, { onConflict: "team,day", ignoreDuplicates: true })
+        .select("team");
+      if (!logged?.length) { teams[team] = `already posted today (${now.date})`; continue; }
+    }
 
     const body: unknown[] = [
       { type: "TextBlock", size: "Medium", weight: "Bolder", wrap: true,
@@ -457,14 +474,16 @@ async function postTeamsDigests(db: SupabaseClient) {
           }],
         }),
       });
-      if (!res.ok) throw new Error(`Teams ${res.status}: ${await res.text()}`);
+      if (!res.ok) throw new Error(`Teams ${res.status}: ${(await res.text()).slice(0, 300)}`);
       posted++;
+      teams[team] = `posted ${items.length} item(s) due ${tomorrow}`;
     } catch (e) {
       console.error(`Teams post failed for ${team}:`, e);
-      await db.from("teams_post_log").delete().eq("team", team).eq("day", now.date); // retry next run
+      teams[team] = `FAILED: ${e instanceof Error ? e.message : String(e)}`;
+      if (!force) await db.from("teams_post_log").delete().eq("team", team).eq("day", now.date); // retry next run
     }
   }
-  return { posted };
+  return { posted, teams };
 }
 
 Deno.serve(async (req) => {
@@ -474,6 +493,15 @@ Deno.serve(async (req) => {
   }
 
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+
+  // Test: POST {"teamsTest": true} to post the Teams "due tomorrow" message right now.
+  let body: { teamsTest?: boolean } = {};
+  try { body = await req.json(); } catch { /* cron sends an empty body */ }
+  if (body?.teamsTest) {
+    const teams = await postTeamsDigests(db, true);
+    return new Response(JSON.stringify({ teams }, null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+
   const getUser = userCache(db);
   const result: Record<string, unknown> = {};
 
