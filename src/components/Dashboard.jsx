@@ -3,13 +3,12 @@ import { dueColor, dueLabel, byDue, AVATAR_COLORS } from '../lib/constants';
 import { useTeam } from '../lib/team';
 import { isShared } from '../lib/completions';
 
+// Only call out what matters: high priority and discussions.
 function priorityBadge(p) {
-  const map = { high: 'badge-red', medium: 'badge-orange', low: 'badge-gray' };
-  const label = { high: 'High', medium: 'Med', low: 'Low' };
-  return <span className={`badge ${map[p]||'badge-gray'}`}>{label[p]||'Med'}</span>;
+  return p === 'high' ? <span className="tag tag-high">High</span> : null;
 }
 function typeBadge(t) {
-  return <span className={`badge ${t==='discussion'?'badge-green':'badge-yellow'}`}>{t==='discussion'?'DISC':'ASGN'}</span>;
+  return t === 'discussion' ? <span className="tag tag-discussion">Discussion</span> : null;
 }
 
 export function Dashboard({ assignments, meetings, courses, onSwitchView, onToggleDone, completions }) {

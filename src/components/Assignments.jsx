@@ -11,7 +11,6 @@ function priorityBadge(p) {
   return <span className={`badge ${map[p]||'badge-gray'}`}>{label[p]||'MED'}</span>;
 }
 
-const PRIORITY_DOT = { high: 'var(--danger)', medium: 'var(--accent3)', low: 'var(--text3)' };
 const DUE_BADGE = { overdue: 'badge-red', today: 'badge-yellow', soon: 'badge-orange', ok: 'badge-gray' };
 
 function avatarColor(name, members) {
@@ -37,8 +36,8 @@ function CompletionPills({ assignment, completions }) {
 
   return (
     <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}}>
-        <span style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:10,flexWrap:'wrap',marginBottom:10}}>
+        <span style={{fontSize:12,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.04em'}}>
           Each person marks their part done
         </span>
         <span className="hint">{count} of {total} done</span>
@@ -195,13 +194,10 @@ function TaskRow({ a, onOpen, onToggleDone, completions }) {
       <div className="task-content">
         <div className="task-title-row">
           <span className={`task-name ${a.done ? 'done' : ''}`}>{a.name}</span>
-          <span className="priority-dot" style={{ background: PRIORITY_DOT[a.priority] || PRIORITY_DOT.medium }} />
+          {a.priority === 'high' && !a.done && <span className="tag tag-high">High</span>}
         </div>
         <div className="task-meta-row">
-          <span
-            className={`task-type-dot ${a.type === 'discussion' ? 'type-discussion' : 'type-assignment'}`}
-            title={a.type === 'discussion' ? 'Discussion' : 'Assignment'}
-          />
+          {a.type === 'discussion' && <span className="tag tag-discussion">Discussion</span>}
           {a.done ? (
             <span className="hint" style={{ color: 'var(--text3)' }}>Completed</span>
           ) : (
@@ -219,9 +215,6 @@ function TaskRow({ a, onOpen, onToggleDone, completions }) {
             </a>
           )}
           <div className="task-meta-spacer" />
-          {shared && !a.done && (
-            <span className="hint">{prog.count} of {prog.total} done</span>
-          )}
           <AvatarStack names={a.assigned_to} finished={shared ? prog.set : null} />
         </div>
       </div>
@@ -280,12 +273,12 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
           <div key={c.id} className="card">
             <div className="card-header task-group-header">
               <div className="task-group-top">
-                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div className="task-group-title">
                   <div className="course-dot" style={{background:c.color}} />
                   <span className="card-title">{c.code || c.name}</span>
                   {c.code && <span className="hint task-group-name">{c.name}</span>}
                 </div>
-                <span className="hint">{totals.done} of {totals.total} done</span>
+                <span className="hint" style={{whiteSpace:'nowrap'}}>{totals.done}/{totals.total} done</span>
               </div>
               <div className="progress-bar">
                 <div className="progress-fill" style={{ width: `${pct}%`, background: c.color }} />
