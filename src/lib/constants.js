@@ -84,6 +84,11 @@ export function byDue(a, b) {
   return x - y;
 }
 
+// Telegram bot username (without @), e.g. SmeltRemindersBot. Set REACT_APP_TELEGRAM_BOT.
+export const TELEGRAM_BOT = (process.env.REACT_APP_TELEGRAM_BOT || '').replace(/^@/, '');
+// Text messages need Twilio; hidden unless REACT_APP_ENABLE_SMS=true.
+export const SMS_ENABLED = process.env.REACT_APP_ENABLE_SMS === 'true';
+
 export function uid() {
   return Math.random().toString(36).slice(2, 9);
 }

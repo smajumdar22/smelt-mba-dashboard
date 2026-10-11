@@ -11,6 +11,9 @@
 //   REMINDER_FROM_EMAIL  e.g. "SMELT Reminders <reminders@yourdomain.com>"
 //   APP_URL              e.g. https://smeltdashboard.netlify.app (optional, linked in messages)
 //   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER   for texts (optional)
+//   TELEGRAM_BOT_TOKEN   for Telegram reminders (optional)
+//   TEAMS_WEBHOOK_SEATTLE_MELT, TEAMS_WEBHOOK_MALAMUTES   Teams channel "due tomorrow" posts (optional)
+//   TEAMS_POST_TIME      time of the daily Teams post, e.g. 09:00 (Pacific). Default 09:00
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
@@ -81,6 +84,36 @@ async function sendText(to: string, body: string) {
     body: new URLSearchParams({ To: to, From: from, Body: body.slice(0, 600) }),
   });
   if (!res.ok) throw new Error(`Twilio ${res.status}: ${await res.text()}`);
+}
+
+// ── Telegram ──
+async function telegramChat(db: SupabaseClient, userId: string): Promise<number> {
+  const { data } = await db.from("telegram_links").select("chat_id").eq("user_id", userId).maybeSingle();
+  if (!data?.chat_id) throw new Error("Telegram not connected");
+  return data.chat_id as number;
+}
+
+async function sendTelegram(chatId: number, subject: string, blocks: Block[]) {
+  const token = env("TELEGRAM_BOT_TOKEN");
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN not set");
+  const appUrl = env("APP_URL");
+  let text = `<b>${escapeHtml(subject)}</b>`;
+  for (const b of blocks) {
+    const link = safeUrl(b.link);
+    const part = `\n\n<b>${escapeHtml(b.title)}</b>` +
+      (b.meta ? `\n${escapeHtml(b.meta)}` : "") +
+      (b.body ? `\n${escapeHtml(clip(b.body, 500))}` : "") +
+      (link ? `\n<a href="${escapeHtml(link)}">Open in Canvas</a>` : "");
+    if (text.length + part.length > 3800) { text += "\n\n…more in the app"; break; }
+    text += part;
+  }
+  if (appUrl) text += `\n\n<a href="${escapeHtml(appUrl)}">Open the dashboard</a>`;
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }),
+  });
+  if (!res.ok) throw new Error(`Telegram ${res.status}: ${await res.text()}`);
 }
 
 // Always send to the account's own verified address, never a client-supplied one.
@@ -198,19 +231,21 @@ async function sendOneOffs(db: SupabaseClient, getUser: (id: string) => Promise<
       }
       const user = await getUser(r.user_id);
       if (!user) throw new Error("User not found");
-      const to = destination(user, r.channel);
       const due = a?.due_date ? `Due ${formatDue(a.due_date, a.due_time)}` : "";
+      const body = [r.message && `Your note: ${r.message}`, clip(a?.notes, 1500)].filter(Boolean).join("\n\n");
+      const block: Block = {
+        title: r.course_name,
+        meta: due || undefined,
+        body: body || undefined,
+        link: a?.canvas_url ?? undefined,
+      };
       if (r.channel === "sms") {
         const extra = [r.message, due, clip(a?.notes, 120)].filter(Boolean).join(" · ");
-        await sendText(to, `Reminder: ${r.course_name}${extra ? ` - ${extra}` : ""}`);
+        await sendText(destination(user, "sms"), `Reminder: ${r.course_name}${extra ? ` - ${extra}` : ""}`);
+      } else if (r.channel === "telegram") {
+        await sendTelegram(await telegramChat(db, r.user_id), "⏰ Reminder", [block]);
       } else {
-        const body = [r.message && `Your note: ${r.message}`, clip(a?.notes, 1500)].filter(Boolean).join("\n\n");
-        await sendEmail(to, `Reminder: ${r.course_name}`, [{
-          title: r.course_name,
-          meta: due || undefined,
-          body: body || undefined,
-          link: a?.canvas_url ?? undefined,
-        }]);
+        await sendEmail(destination(user, "email"), `Reminder: ${r.course_name}`, [block]);
       }
       sent++;
     } catch (e) {
@@ -287,7 +322,7 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
       if (!items.length) continue;
 
       const slot = `${now.date} ${t}`;
-      const channels = [s.by_email && "email", s.by_sms && "sms"].filter(Boolean) as string[];
+      const channels = [s.by_email && "email", s.by_sms && "sms", s.by_telegram && "telegram"].filter(Boolean) as string[];
 
       for (const channel of channels) {
         // Log first; if the row already exists this slot was already sent.
@@ -300,7 +335,6 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
         try {
           const user = await getUser(s.user_id);
           if (!user) throw new Error("User not found");
-          const to = destination(user, channel);
           const lines = items.map((a) =>
             `${courseLabel.get(a.course_id) ?? "Course"}: ${a.name} (${dueText(a.days)}${a.due_time ? ` ${formatDue(a.due_date, a.due_time).split(", ").pop()}` : ""})`
           );
@@ -320,9 +354,11 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
             const body = items.length === 1
               ? [lines[0], clip(items[0].notes, 200)].filter(Boolean).join("\n")
               : lines.slice(0, 5).join("\n") + (lines.length > 5 ? `\n+${lines.length - 5} more` : "");
-            await sendText(to, `SMELT: ${subject}\n${body}`);
+            await sendText(destination(user, "sms"), `SMELT: ${subject}\n${body}`);
+          } else if (channel === "telegram") {
+            await sendTelegram(await telegramChat(db, s.user_id), `📚 ${subject}`, blocks);
           } else {
-            await sendEmail(to, subject, blocks);
+            await sendEmail(destination(user, "email"), subject, blocks);
           }
           sent++;
         } catch (e) {
@@ -336,6 +372,99 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
     }
   }
   return { sent, failed };
+}
+
+// ── 3. Teams channel: "due tomorrow" post, once a day per team ──
+const TEAM_NAMES: Record<string, string> = { "seattle-melt": "Seattle Melt", "malamutes": "Sixth Sense" };
+const DEFAULT_TEAM = "seattle-melt";
+const TEAMS_TZ = "America/Los_Angeles";
+
+function addDays(date: string, n: number) {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function postTeamsDigests(db: SupabaseClient) {
+  const now = localNow(TEAMS_TZ);
+  const at = toMinutes(env("TEAMS_POST_TIME") || "09:00");
+  const late = now.minutes - at;
+  if (at < 0 || late < 0 || late >= CATCH_UP_MINUTES) return { posted: 0 };
+
+  const hooks = Object.keys(TEAM_NAMES)
+    .map((team) => ({ team, url: env(`TEAMS_WEBHOOK_${team.toUpperCase().replace(/-/g, "_")}`) }))
+    .filter((h) => h.url);
+  if (!hooks.length) return { posted: 0 };
+
+  const tomorrow = addDays(now.date, 1);
+  const [{ data: assignments }, { data: quarters }, { data: courses }] = await Promise.all([
+    db.from("assignments").select("id,name,due_date,due_time,quarter_id,course_id,assigned_to,canvas_url")
+      .eq("done", false).eq("due_date", tomorrow),
+    db.from("quarters").select("id,team"),
+    db.from("courses").select("id,code,name"),
+  ]);
+  const teamOf = new Map((quarters ?? []).map((q) => [q.id, q.team || DEFAULT_TEAM]));
+  const courseLabel = new Map((courses ?? []).map((c) => [c.id, c.code || c.name]));
+  const appUrl = env("APP_URL");
+  let posted = 0;
+
+  for (const { team, url } of hooks) {
+    const items = (assignments ?? [])
+      .filter((a) => (teamOf.get(a.quarter_id) ?? DEFAULT_TEAM) === team)
+      .sort((a, b) => String(a.due_time ?? "23:59").localeCompare(String(b.due_time ?? "23:59")));
+    if (!items.length) continue;
+
+    // Log first so the post goes out once even if runs overlap.
+    const { data: logged } = await db.from("teams_post_log")
+      .upsert({ team, day: now.date }, { onConflict: "team,day", ignoreDuplicates: true })
+      .select("team");
+    if (!logged?.length) continue;
+
+    const body: unknown[] = [
+      { type: "TextBlock", size: "Medium", weight: "Bolder", wrap: true,
+        text: `📚 Due tomorrow, ${formatDue(tomorrow)} (${items.length})` },
+    ];
+    for (const a of items) {
+      const link = safeUrl(a.canvas_url);
+      const who = (a.assigned_to ?? []).length ? `For: ${a.assigned_to.join(", ")}` : "";
+      body.push({
+        type: "Container", separator: true, spacing: "Medium",
+        items: [
+          { type: "TextBlock", weight: "Bolder", wrap: true, text: a.name },
+          { type: "TextBlock", isSubtle: true, spacing: "None", wrap: true,
+            text: [courseLabel.get(a.course_id) ?? "Course",
+              a.due_time ? formatDue(a.due_date, a.due_time).split(", ").pop() : "by end of day",
+              who].filter(Boolean).join(" · ") },
+          ...(link ? [{ type: "TextBlock", spacing: "Small", text: `[Open in Canvas](${link})` }] : []),
+        ],
+      });
+    }
+    if (appUrl) body.push({ type: "TextBlock", spacing: "Medium", text: `[Open the dashboard](${appUrl})` });
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "message",
+          attachments: [{
+            contentType: "application/vnd.microsoft.card.adaptive",
+            contentUrl: null,
+            content: {
+              $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+              type: "AdaptiveCard", version: "1.4", body,
+            },
+          }],
+        }),
+      });
+      if (!res.ok) throw new Error(`Teams ${res.status}: ${await res.text()}`);
+      posted++;
+    } catch (e) {
+      console.error(`Teams post failed for ${team}:`, e);
+      await db.from("teams_post_log").delete().eq("team", team).eq("day", now.date); // retry next run
+    }
+  }
+  return { posted };
 }
 
 Deno.serve(async (req) => {
@@ -353,6 +482,9 @@ Deno.serve(async (req) => {
 
   try { result.dueDate = await sendDueDigests(db, getUser); }
   catch (e) { result.dueDateError = e instanceof Error ? e.message : String(e); }
+
+  try { result.teams = await postTeamsDigests(db); }
+  catch (e) { result.teamsError = e instanceof Error ? e.message : String(e); }
 
   return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } });
 });

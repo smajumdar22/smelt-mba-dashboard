@@ -23,6 +23,8 @@ async function ensureReminderSettings(user) {
     {
       user_id: user.id,
       ...DEFAULT_SETTINGS,
+      // Signed in without email (Telegram only): nothing to email.
+      by_email: !user.is_anonymous && !!user.email,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles',
     },
     { onConflict: 'user_id', ignoreDuplicates: true }
@@ -58,6 +60,12 @@ export function sendLoginLink(email) {
     email,
     options: { emailRedirectTo: window.location.origin },
   });
+}
+
+// Sign in without any email or phone. The account lives in this browser;
+// it's used only to remember reminder settings and the Telegram connection.
+export function signInWithoutEmail() {
+  return supabase.auth.signInAnonymously();
 }
 
 export function signOut() {
