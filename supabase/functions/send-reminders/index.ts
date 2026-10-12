@@ -14,6 +14,7 @@
 //   TELEGRAM_BOT_TOKEN   for Telegram reminders (optional)
 //   TEAMS_WEBHOOK_SEATTLE_MELT, TEAMS_WEBHOOK_MALAMUTES   Teams daily "coming up" posts (optional)
 //   TEAMS_POST_TIME      time of the daily Teams post, e.g. 09:00 (Pacific). Default 09:00
+//   MEETING_REMINDER_MINUTES  how long before a meeting to post in Teams. Default 15
 //   TEAMS_DAYS_BEFORE    which days ahead to include, e.g. 7,3,1,0 (default) = 1 week, 3 days, tomorrow, today
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 
@@ -406,8 +407,11 @@ async function postTeamsDigests(db: SupabaseClient, force = false) {
   }
 
   // Which "days before due" to include, e.g. "7,3,1,0" = due in 1 week, in 3 days, tomorrow, and today.
-  const offsets = [...new Set((env("TEAMS_DAYS_BEFORE") || "7,3,1,0").split(",")
+  const parseDays = (v: string) => [...new Set(v.split(",")
     .map((x) => parseInt(x.trim(), 10)).filter((n) => n >= 0 && n <= 60))].sort((a, b) => a - b);
+  // Fall back to the default if the setting is empty or has no valid numbers (e.g. a typo).
+  let offsets = parseDays(env("TEAMS_DAYS_BEFORE"));
+  if (!offsets.length) offsets = parseDays("7,3,1,0");
   const dayOf = new Map(offsets.map((n) => [addDays(now.date, n), n]));
   const [{ data: assignments }, { data: quarters }, { data: courses }] = await Promise.all([
     db.from("assignments").select("id,name,due_date,due_time,quarter_id,course_id,assigned_to,canvas_url")
@@ -503,6 +507,140 @@ async function postTeamsDigests(db: SupabaseClient, force = false) {
   return { posted, teams };
 }
 
+// ── 4. Teams: "meeting starts in 15 min" post for each meeting on the Meetings tab ──
+// Meetings are stored as a weekday ("Sunday") and a typed time ("7:00 PM", "19:00", "7pm").
+// Weekly meetings remind every week; one-time meetings remind once.
+// The post also lists assignments due this week and next week, to go over in the meeting.
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function parseClock(t: string): number | null {
+  const m = /^\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\s*$/i.exec(t ?? "");
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  const ap = (m[3] ?? "").toLowerCase().replace(/\./g, "");
+  if (min > 59 || h > 23) return null;
+  if (ap === "pm" && h < 12) h += 12;
+  if (ap === "am" && h === 12) h = 0;
+  if (!ap && h > 0 && h < 7) h += 12; // "5:30" with no am/pm: assume evening class time
+  return h * 60 + min;
+}
+
+function localWeekday(tz: string) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" }).format(new Date());
+}
+
+async function postMeetingReminders(db: SupabaseClient, force = false) {
+  const lead = Math.max(1, Math.min(120, parseInt(env("MEETING_REMINDER_MINUTES") || "15", 10) || 15));
+  const now = localNow(TEAMS_TZ);
+  const today = localWeekday(TEAMS_TZ);
+
+  // Assignments due this week and next week (weeks run Sunday–Saturday), listed in the post.
+  const dow = Math.max(0, WEEKDAYS.indexOf(today));
+  const endThisWeek = addDays(now.date, 6 - dow);
+  const endNextWeek = addDays(endThisWeek, 7);
+
+  const [{ data: meetings }, { data: quarters }, { data: dueSoon }, { data: courses }] = await Promise.all([
+    db.from("meetings").select("id,name,day,time,link,recurring,quarter_id"),
+    db.from("quarters").select("id,team,active"),
+    db.from("assignments").select("name,due_date,due_time,quarter_id,course_id,assigned_to")
+      .eq("done", false).gte("due_date", now.date).lte("due_date", endNextWeek)
+      .order("due_date").order("due_time", { nullsFirst: false }),
+    db.from("courses").select("id,code,name"),
+  ]);
+  const qTeam = new Map((quarters ?? []).map((q) => [q.id, q.team || DEFAULT_TEAM]));
+  const courseLabel = new Map((courses ?? []).map((c) => [c.id, c.code || c.name]));
+  const shortDate = (d: string) => new Date(`${d}T12:00:00Z`)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+  // Card blocks: "This week" and "Next week" sections for one team.
+  function dueBlocks(team: string): unknown[] {
+    const mine = (dueSoon ?? []).filter((a) => (qTeam.get(a.quarter_id) ?? DEFAULT_TEAM) === team);
+    const weeks: [string, string, string][] = [
+      ["This week", now.date, endThisWeek],
+      ["Next week", addDays(endThisWeek, 1), endNextWeek],
+    ];
+    const blocks: unknown[] = [];
+    for (const [title, from, to] of weeks) {
+      const list = mine.filter((a) => a.due_date >= from && a.due_date <= to);
+      blocks.push({ type: "TextBlock", spacing: "Large", weight: "Bolder", wrap: true,
+        color: title === "This week" ? "Attention" : "Accent",
+        text: `📚 Due ${title.toLowerCase()} (${shortDate(from)}–${shortDate(to)}): ${list.length || "nothing"}` });
+      for (const a of list) {
+        const when = formatDue(a.due_date, a.due_time);
+        const who = (a.assigned_to ?? []).length ? ` · ${a.assigned_to.join(", ")}` : "";
+        blocks.push({ type: "TextBlock", spacing: "Small", wrap: true,
+          text: `• **${a.name}** — ${courseLabel.get(a.course_id) ?? "Course"} · ${when}${who}` });
+      }
+    }
+    return blocks;
+  }
+  const results: Record<string, string> = {};
+  let posted = 0;
+
+  for (const m of meetings ?? []) {
+    const team = qTeam.get(m.quarter_id) ?? DEFAULT_TEAM;
+    const url = env(`TEAMS_WEBHOOK_${team.toUpperCase().replace(/-/g, "_")}`);
+    const label = `${m.name} (${m.day} ${m.time})`;
+    if (!url) { results[label] = `no Teams URL for ${TEAM_NAMES[team] ?? team}`; continue; }
+
+    const start = parseClock(m.time);
+    if (start === null) { results[label] = `can't read the time "${m.time}" (use like 7:00 PM)`; continue; }
+    const day = WEEKDAYS.find((d) => d.toLowerCase() === String(m.day).trim().toLowerCase());
+    if (!day) { results[label] = `can't read the day "${m.day}"`; continue; }
+
+    const minsUntil = start - now.minutes;
+    if (!force && !(day === today && minsUntil > 0 && minsUntil <= lead)) continue;
+
+    // Once per meeting per day (weekly); once ever (one-time). Reuses teams_post_log.
+    const key = `meeting:${m.id}`;
+    if (!force) {
+      if (m.recurring === false) {
+        const { data: before } = await db.from("teams_post_log").select("day").eq("team", key).limit(1);
+        if (before?.length) { results[label] = "one-time meeting already reminded"; continue; }
+      }
+      const { data: logged } = await db.from("teams_post_log")
+        .upsert({ team: key, day: now.date }, { onConflict: "team,day", ignoreDuplicates: true })
+        .select("team");
+      if (!logged?.length) { results[label] = "already reminded today"; continue; }
+    }
+
+    const link = safeUrl(m.link);
+    const inText = force ? `at ${m.time}` : `in ${minsUntil} min (${m.time})`;
+    const card = {
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+      type: "AdaptiveCard", version: "1.4",
+      body: [
+        { type: "TextBlock", size: "Medium", weight: "Bolder", wrap: true, text: `🎥 ${m.name} starts ${inText}` },
+        { type: "TextBlock", isSubtle: true, spacing: "Small", wrap: true,
+          text: `${TEAM_NAMES[team] ?? team} · ${m.day}${m.recurring === false ? "" : " · weekly"}` },
+        ...(link ? [] : [{ type: "TextBlock", spacing: "Small", wrap: true, text: "No meeting link saved in the dashboard." }]),
+        ...dueBlocks(team),
+      ],
+      ...(link ? { actions: [{ type: "Action.OpenUrl", title: "Join meeting", url: link }] } : {}),
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "message",
+          attachments: [{ contentType: "application/vnd.microsoft.card.adaptive", contentUrl: null, content: card }],
+        }),
+      });
+      if (!res.ok) throw new Error(`Teams ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      posted++;
+      results[label] = "posted";
+    } catch (e) {
+      console.error(`Meeting reminder failed for ${m.id}:`, e);
+      results[label] = `FAILED: ${e instanceof Error ? e.message : String(e)}`;
+      if (!force) await db.from("teams_post_log").delete().eq("team", key).eq("day", now.date); // retry next run
+    }
+  }
+  return { posted, meetings: results };
+}
+
 Deno.serve(async (req) => {
   const secret = env("CRON_SECRET");
   if (!secret || req.headers.get("x-cron-secret") !== secret) {
@@ -512,11 +650,16 @@ Deno.serve(async (req) => {
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 
   // Test: POST {"teamsTest": true} to post the Teams "coming up" message right now.
-  let body: { teamsTest?: boolean } = {};
+  // Test: POST {"meetingTest": true} to post a reminder for every meeting right now.
+  let body: { teamsTest?: boolean; meetingTest?: boolean } = {};
   try { body = await req.json(); } catch { /* cron sends an empty body */ }
   if (body?.teamsTest) {
     const teams = await postTeamsDigests(db, true);
     return new Response(JSON.stringify({ teams }, null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (body?.meetingTest) {
+    const meetings = await postMeetingReminders(db, true);
+    return new Response(JSON.stringify({ meetings }, null, 2), { headers: { "Content-Type": "application/json" } });
   }
 
   const getUser = userCache(db);
@@ -530,6 +673,9 @@ Deno.serve(async (req) => {
 
   try { result.teams = await postTeamsDigests(db); }
   catch (e) { result.teamsError = e instanceof Error ? e.message : String(e); }
+
+  try { result.meetings = await postMeetingReminders(db); }
+  catch (e) { result.meetingsError = e instanceof Error ? e.message : String(e); }
 
   return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } });
 });
