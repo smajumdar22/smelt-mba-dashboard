@@ -12,8 +12,9 @@
 //   APP_URL              e.g. https://smeltdashboard.netlify.app (optional, linked in messages)
 //   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER   for texts (optional)
 //   TELEGRAM_BOT_TOKEN   for Telegram reminders (optional)
-//   TEAMS_WEBHOOK_SEATTLE_MELT, TEAMS_WEBHOOK_MALAMUTES   Teams channel "due tomorrow" posts (optional)
+//   TEAMS_WEBHOOK_SEATTLE_MELT, TEAMS_WEBHOOK_MALAMUTES   Teams daily "coming up" posts (optional)
 //   TEAMS_POST_TIME      time of the daily Teams post, e.g. 09:00 (Pacific). Default 09:00
+//   TEAMS_DAYS_BEFORE    which days ahead to include, e.g. 7,3,1,0 (default) = 1 week, 3 days, tomorrow, today
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
@@ -374,7 +375,7 @@ async function sendDueDigests(db: SupabaseClient, getUser: (id: string) => Promi
   return { sent, failed };
 }
 
-// ── 3. Teams channel: "due tomorrow" post, once a day per team ──
+// ── 3. Teams: daily post listing what's due in 1 week, 3 days, tomorrow and today (TEAMS_DAYS_BEFORE) ──
 const TEAM_NAMES: Record<string, string> = { "seattle-melt": "Seattle Melt", "malamutes": "Sixth Sense" };
 const DEFAULT_TEAM = "seattle-melt";
 const TEAMS_TZ = "America/Los_Angeles";
@@ -404,10 +405,13 @@ async function postTeamsDigests(db: SupabaseClient, force = false) {
     return { posted: 0, reason: "no TEAMS_WEBHOOK_SEATTLE_MELT / TEAMS_WEBHOOK_MALAMUTES secret found" };
   }
 
-  const tomorrow = addDays(now.date, 1);
+  // Which "days before due" to include, e.g. "7,3,1,0" = due in 1 week, in 3 days, tomorrow, and today.
+  const offsets = [...new Set((env("TEAMS_DAYS_BEFORE") || "7,3,1,0").split(",")
+    .map((x) => parseInt(x.trim(), 10)).filter((n) => n >= 0 && n <= 60))].sort((a, b) => a - b);
+  const dayOf = new Map(offsets.map((n) => [addDays(now.date, n), n]));
   const [{ data: assignments }, { data: quarters }, { data: courses }] = await Promise.all([
     db.from("assignments").select("id,name,due_date,due_time,quarter_id,course_id,assigned_to,canvas_url")
-      .eq("done", false).eq("due_date", tomorrow),
+      .eq("done", false).in("due_date", [...dayOf.keys()]),
     db.from("quarters").select("id,team"),
     db.from("courses").select("id,code,name"),
   ]);
@@ -420,12 +424,15 @@ async function postTeamsDigests(db: SupabaseClient, force = false) {
   for (const { team, url } of hooks) {
     const items = (assignments ?? [])
       .filter((a) => (teamOf.get(a.quarter_id) ?? DEFAULT_TEAM) === team)
-      .sort((a, b) => String(a.due_time ?? "23:59").localeCompare(String(b.due_time ?? "23:59")));
+      // due earlier today and already past: leave it out
+      .filter((a) => !(a.due_date === now.date && a.due_time && toMinutes(String(a.due_time).slice(0, 5)) <= now.minutes))
+      .sort((a, b) => `${a.due_date} ${a.due_time ?? "23:59"}`.localeCompare(`${b.due_date} ${b.due_time ?? "23:59"}`));
+    const windowText = offsets.map((n) => (n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`)).join(", ");
     if (!items.length) {
       const due = (assignments ?? []).length;
       teams[team] = due
-        ? `nothing due ${tomorrow} for this team (${due} due for another team)`
-        : `nothing open due ${tomorrow}`;
+        ? `nothing due ${windowText} for this team (${due} for another team)`
+        : `nothing open due ${windowText}`;
       continue;
     }
 
@@ -437,11 +444,21 @@ async function postTeamsDigests(db: SupabaseClient, force = false) {
       if (!logged?.length) { teams[team] = `already posted today (${now.date})`; continue; }
     }
 
+    const heading = (n: number) =>
+      n === 0 ? "Due today" : n === 1 ? "Due tomorrow" : n === 7 ? "Due in 1 week" : `Due in ${n} days`;
     const body: unknown[] = [
       { type: "TextBlock", size: "Medium", weight: "Bolder", wrap: true,
-        text: `📚 Due tomorrow, ${formatDue(tomorrow)} (${items.length})` },
+        text: `📚 ${TEAM_NAMES[team] ?? team}: coming up (${items.length})` },
     ];
+    let section = -1;
     for (const a of items) {
+      const n = dayOf.get(a.due_date) ?? 0;
+      if (n !== section) {
+        section = n;
+        body.push({ type: "TextBlock", spacing: "Large", weight: "Bolder", wrap: true,
+          color: n <= 1 ? "Attention" : "Accent",
+          text: `${heading(n)} · ${formatDue(a.due_date)}` });
+      }
       const link = safeUrl(a.canvas_url);
       const who = (a.assigned_to ?? []).length ? `For: ${a.assigned_to.join(", ")}` : "";
       body.push({
@@ -476,7 +493,7 @@ async function postTeamsDigests(db: SupabaseClient, force = false) {
       });
       if (!res.ok) throw new Error(`Teams ${res.status}: ${(await res.text()).slice(0, 300)}`);
       posted++;
-      teams[team] = `posted ${items.length} item(s) due ${tomorrow}`;
+      teams[team] = `posted ${items.length} item(s) due ${windowText}`;
     } catch (e) {
       console.error(`Teams post failed for ${team}:`, e);
       teams[team] = `FAILED: ${e instanceof Error ? e.message : String(e)}`;
@@ -494,7 +511,7 @@ Deno.serve(async (req) => {
 
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 
-  // Test: POST {"teamsTest": true} to post the Teams "due tomorrow" message right now.
+  // Test: POST {"teamsTest": true} to post the Teams "coming up" message right now.
   let body: { teamsTest?: boolean } = {};
   try { body = await req.json(); } catch { /* cron sends an empty body */ }
   if (body?.teamsTest) {
