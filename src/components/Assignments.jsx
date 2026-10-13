@@ -198,6 +198,8 @@ function TaskRow({ a, onOpen, onToggleDone, completions }) {
         </div>
         <div className="task-meta-row">
           {a.type === 'discussion' && <span className="tag tag-discussion">Discussion</span>}
+          {a.work_type === 'group' && <span className="tag tag-group">Group</span>}
+          {a.work_type === 'individual' && <span className="tag tag-individual">Individual</span>}
           {a.done ? (
             <span className="hint" style={{ color: 'var(--text3)' }}>Completed</span>
           ) : (
@@ -334,6 +336,11 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
               <span className={`badge ${detailItem.type==='discussion'?'badge-green':'badge-yellow'}`}>
                 {detailItem.type==='discussion'?'DISCUSSION':'ASSIGNMENT'}
               </span>
+              {detailItem.work_type && (
+                <span className={`badge ${detailItem.work_type==='group'?'badge-purple':'badge-gray'}`}>
+                  {detailItem.work_type==='group'?'GROUP':'INDIVIDUAL'}
+                </span>
+              )}
               {priorityBadge(detailItem.priority)}
               <span className={`badge badge-${dueColor(detailItem.due_date, detailItem.due_time)==='overdue'?'red':dueColor(detailItem.due_date, detailItem.due_time)==='today'?'yellow':dueColor(detailItem.due_date, detailItem.due_time)==='soon'?'orange':'gray'}`}>
                 {dueLabel(detailItem.due_date, detailItem.due_time)}

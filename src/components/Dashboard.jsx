@@ -10,6 +10,11 @@ function priorityBadge(p) {
 function typeBadge(t) {
   return t === 'discussion' ? <span className="tag tag-discussion">Discussion</span> : null;
 }
+function workBadge(w) {
+  if (w === 'group') return <span className="tag tag-group">Group</span>;
+  if (w === 'individual') return <span className="tag tag-individual">Individual</span>;
+  return null;
+}
 
 export function Dashboard({ assignments, meetings, courses, onSwitchView, onToggleDone, completions }) {
   const { name: teamName, members: TEAM } = useTeam();
@@ -76,6 +81,7 @@ export function Dashboard({ assignments, meetings, courses, onSwitchView, onTogg
                       <div className={`assign-name ${a.done?'done':''}`}>{a.name}</div>
                       <div className="assign-sub">
                         {typeBadge(a.type)}
+                        {workBadge(a.work_type)}
                         <span className={`hint due-${dc}`}>{dueLabel(a.due_date, a.due_time)}</span>
                         {c && <span className="hint" style={{color:c.color}}>·&nbsp;{c.code}</span>}
                       </div>

@@ -35,6 +35,7 @@ export function Modal({ type, data, onClose, actions, courses }) {
           due_date: form.due_date || null,
           due_time: form.due_date && form.due_time ? form.due_time : null,
           priority: form.priority || 'medium',
+          work_type: form.work_type || null,
           assigned_to: selectedMembers,
           canvas_url: form.canvas_url || '',
           notes: form.notes || '',
@@ -67,9 +68,12 @@ export function Modal({ type, data, onClose, actions, courses }) {
       }
       onClose();
     } catch (e) {
-      setError(/due_time/.test(e.message || '')
+      const msg = e.message || '';
+      setError(/due_time/.test(msg)
         ? 'Run supabase-due-times.sql in Supabase first (adds due times).'
-        : e.message);
+        : /work_type/.test(msg)
+          ? 'Run supabase-work-type.sql in Supabase first (adds Group / Individual).'
+          : msg);
     } finally {
       setSaving(false);
     }
@@ -121,6 +125,14 @@ export function Modal({ type, data, onClose, actions, courses }) {
                 <option value="low">Low</option>
               </select>
             </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Group or individual</label>
+            <select className="form-input" value={form.work_type||''} onChange={e=>set('work_type',e.target.value)}>
+              <option value="">Not set</option>
+              <option value="individual">Individual</option>
+              <option value="group">Group</option>
+            </select>
           </div>
           <div className="form-group">
             <label className="form-label">Course</label>
