@@ -191,6 +191,7 @@ export default function App() {
           onEdit={(a) => openModal('assignment', a)}
           onToggleDone={data.toggleDone}
           onUpdate={data.updateAssignment}
+          onDelete={data.deleteAssignment}
           completions={completions}
         />
       )}

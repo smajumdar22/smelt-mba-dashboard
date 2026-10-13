@@ -167,7 +167,7 @@ function AvatarStack({ names, finished }) {
 }
 
 // ── Single task row ───────────────────────────────────────
-function TaskRow({ a, onOpen, onToggleDone, completions }) {
+function TaskRow({ a, onOpen, onToggleDone, completions, onReopen, onDelete }) {
   const dc = dueColor(a.due_date, a.due_time);
   const shared = isShared(a);
   const prog = shared ? completions.progress(a) : null;
@@ -219,14 +219,21 @@ function TaskRow({ a, onOpen, onToggleDone, completions }) {
           <div className="task-meta-spacer" />
           <AvatarStack names={a.assigned_to} finished={shared ? prog.set : null} />
         </div>
+        {a.done && (onReopen || onDelete) && (
+          <div className="task-done-actions" onClick={e => e.stopPropagation()}>
+            {onReopen && <button className="link-btn" onClick={() => onReopen(a)}>↺ Reopen</button>}
+            {onDelete && <button className="link-btn link-danger" onClick={() => onDelete(a)}>Delete</button>}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ── Main Assignments component ───────────────────────────
-export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone, onUpdate, completions }) {
+export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone, onUpdate, onDelete, completions }) {
   const [tab, setTab] = useState('pending');
+  const [openDone, setOpenDone] = useState({}); // course id -> show its completed tasks
   const [detail, setDetail] = useState(null);
   const [reminderFor, setReminderFor] = useState(null);
 
@@ -250,6 +257,26 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
     if (a.done) totalsByCourse[a.course_id].done += 1;
   });
 
+  // Completed tasks per course, shown under the open ones on the "Open" tab.
+  const doneByCourse = {};
+  [...assignments].filter(a => a.done).sort(byDue).forEach(a => {
+    (doneByCourse[a.course_id] ||= []).push(a);
+  });
+
+  // Reopen: shared tasks reopen for everyone, so the per-person ticks reset too.
+  async function reopen(a) {
+    try {
+      if (isShared(a)) await completions.setEveryone(a, false);
+      else await onToggleDone(a.id, true);
+    } catch (e) { window.alert(e.message || 'Could not reopen'); }
+  }
+  async function remove(a) {
+    if (!onDelete) return;
+    if (!window.confirm(`Delete "${a.name}"? This removes it for everyone and can't be undone.`)) return;
+    try { await onDelete(a.id); setDetail(d => (d === a.id ? null : d)); }
+    catch (e) { window.alert(e.message || 'Could not delete'); }
+  }
+
   const detailItem = detail ? assignments.find(x => x.id === detail) : null;
   const detailCourse = detailItem ? courses.find(c => c.id === detailItem.course_id) : null;
   const hasMultipleAssignees = (detailItem?.assigned_to?.length || 0) > 1;
@@ -257,9 +284,9 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
   return (
     <div className="content">
       <div className="tabs">
-        {['pending','done','all'].map(t => (
+        {[['pending','Open'],['done','Completed'],['all','All']].map(([t, label]) => (
           <button key={t} className={`tab ${tab===t?'active':''}`} onClick={() => setTab(t)}>
-            {t.charAt(0).toUpperCase()+t.slice(1)}
+            {label}
           </button>
         ))}
       </div>
@@ -289,13 +316,26 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
             <div className="card-body list-body">
               {items.length === 0 && (
                 <div className="course-empty">
-                  <span className="hint">{tab === 'pending' ? 'Nothing pending' : 'No tasks yet'}</span>
+                  <span className="hint">{tab === 'pending' ? 'Nothing open' : 'No tasks yet'}</span>
                   <button className="link-btn" onClick={() => onAdd({ course_id: c.id })}>+ Add task</button>
                 </div>
               )}
               {items.map(a => (
-                <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} completions={completions} />
+                <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} completions={completions}
+                  onReopen={reopen} onDelete={onDelete ? remove : null} />
               ))}
+              {tab === 'pending' && (doneByCourse[c.id] || []).length > 0 && (
+                <>
+                  <button className="completed-toggle"
+                    onClick={() => setOpenDone(m => ({ ...m, [c.id]: !m[c.id] }))}>
+                    {openDone[c.id] ? '▾' : '▸'} Completed ({doneByCourse[c.id].length})
+                  </button>
+                  {openDone[c.id] && doneByCourse[c.id].map(a => (
+                    <TaskRow key={a.id} a={a} onOpen={setDetail} onToggleDone={onToggleDone} completions={completions}
+                      onReopen={reopen} onDelete={onDelete ? remove : null} />
+                  ))}
+                </>
+              )}
             </div>
           </div>
         );
@@ -413,7 +453,7 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
                   className={`btn ${detailItem.done?'btn-ghost':'btn-accent'} btn-sm`}
                   onClick={() => { onToggleDone(detailItem.id, detailItem.done); setDetail(null); }}
                 >
-                  {detailItem.done ? 'Mark undone' : 'Mark done ✓'}
+                  {detailItem.done ? '↺ Reopen' : 'Complete ✓'}
                 </button>
               ) : (
                 <button
@@ -421,7 +461,12 @@ export function Assignments({ assignments, courses, onAdd, onEdit, onToggleDone,
                   onClick={() => completions.setEveryone(detailItem, !detailItem.done).catch(() => {})}
                   title={detailItem.done ? 'Reopen for everyone' : 'Mark done for everyone'}
                 >
-                  {detailItem.done ? 'Reopen for all' : 'All done'}
+                  {detailItem.done ? '↺ Reopen for all' : 'All done'}
+                </button>
+              )}
+              {onDelete && (
+                <button className="btn btn-danger btn-sm" onClick={() => remove(detailItem)}>
+                  Delete
                 </button>
               )}
               <button className="btn btn-ghost btn-sm"

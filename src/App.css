@@ -589,3 +589,13 @@ textarea.form-input { resize: vertical; min-height: 70px; }
 .telegram-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .telegram-row > span { display: inline-flex; align-items: center; gap: 8px; color: var(--text); }
 .btn svg { vertical-align: middle; }
+
+/* Completed tasks stay listed: toggle per course + Reopen / Delete */
+.completed-toggle {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  border-top: 1px solid var(--border); margin-top: 6px; padding: 12px 2px 6px;
+  color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.completed-toggle:hover { color: var(--text); }
+.task-done-actions { display: flex; gap: 16px; margin-top: 8px; }
+.link-btn.link-danger { color: var(--danger); }

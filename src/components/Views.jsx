@@ -597,7 +597,7 @@ function CourseTasks({ course, items, onAddTask, onEditTask }) {
       ))}
       {done.length > 0 && (
         <button className="link-btn" style={{ marginTop: 6 }} onClick={() => setShowDone(v => !v)}>
-          {showDone ? 'Hide finished' : `Show ${done.length} finished`}
+          {showDone ? 'Hide completed' : `Show ${done.length} completed`}
         </button>
       )}
     </div>
