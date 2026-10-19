@@ -259,3 +259,25 @@ Canvas links. Nobody's personal info is needed.
 4. Make sure `supabase-telegram-teams.sql` has been run and `send-reminders` is redeployed.
 
 Treat the Teams URL like a password: anyone with it can post to the channel.
+
+## Teams channel: 3-day, 48-hour and 24-hour alerts
+
+Besides the morning post, the channel gets an alert when an open assignment is
+**3 days** (72 hours) from its due time, again at **48 hours**, and again at **24 hours**.
+These run every minute, so they don't depend on the 9 AM post. Times are Pacific; an
+assignment with no due time counts as due at 11:59 PM. Each assignment is alerted
+once per mark; if its due date changes, it alerts again for the new date. One that's
+added late gets only the nearest alert (e.g. 20 hours left: just the 24-hour one). Done assignments are skipped.
+
+It uses the same Teams URLs and log table as the morning post, so there's nothing new to
+run in SQL. Just redeploy:
+```powershell
+npx supabase@latest functions deploy send-reminders --no-verify-jwt
+```
+Optional: change the marks, e.g. `npx supabase@latest secrets set TEAMS_HOURS_BEFORE=72,48,24,2`
+
+Test right now (posts the alerts for everything currently inside 3 days, without
+marking them sent):
+```powershell
+Invoke-RestMethod -Method Post -Uri "https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-reminders" -Headers @{ "x-cron-secret" = "YOUR_CRON_SECRET" } -ContentType "application/json" -Body '{"countdownTest": true}'
+```

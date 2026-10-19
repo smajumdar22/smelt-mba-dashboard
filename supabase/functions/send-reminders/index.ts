@@ -16,6 +16,7 @@
 //   TEAMS_POST_TIME      time of the daily Teams post, e.g. 09:00 (Pacific). Default 09:00
 //   MEETING_REMINDER_MINUTES  how long before a meeting to post in Teams. Default 15
 //   TEAMS_DAYS_BEFORE    which days ahead to include, e.g. 7,3,1,0 (default) = 1 week, 3 days, tomorrow, today
+//   TEAMS_HOURS_BEFORE   countdown alerts in Teams, in hours before the due time. Default 72,48,24
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically.
 
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2";
@@ -641,6 +642,144 @@ async function postMeetingReminders(db: SupabaseClient, force = false) {
   return { posted, meetings: results };
 }
 
+// ── 5. Teams: countdown alerts 3 days, 48 hours and 24 hours before each assignment is due ──
+// Runs every minute. When an open assignment crosses one of the TEAMS_HOURS_BEFORE marks
+// (default "72,48,24" = 3 days, 48 hours, 24 hours), its team's channel gets one card listing everything that just crossed.
+// Times are Pacific; no due time = due at 11:59 PM. Each assignment is alerted once per mark
+// (logged in teams_post_log as "due48h:<id>" on its due date, so a new due date alerts again).
+// An assignment added with less time left only gets the nearest mark (e.g. 20h left → the 24h alert).
+
+// UTC milliseconds for a wall-clock date and time in a time zone.
+function zonedMs(date: string, time: string, tz: string) {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = time.slice(0, 5).split(":").map(Number);
+  const wall = Date.UTC(y, mo - 1, d, h, mi);
+  const offsetAt = (ms: number) => {
+    const p = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    }).formatToParts(new Date(ms));
+    const g = (t: string) => Number(p.find((x) => x.type === t)?.value);
+    return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute")) - ms;
+  };
+  let ms = wall - offsetAt(wall);
+  ms = wall - offsetAt(ms); // second pass settles daylight-saving changeovers
+  return ms;
+}
+
+function parseHours(v: string) {
+  return [...new Set(v.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => n >= 1 && n <= 24 * 14))]
+    .sort((a, b) => b - a); // largest first, e.g. [48, 24]
+}
+
+// force = true posts everything currently inside any mark, without logging — for testing.
+async function postDueCountdowns(db: SupabaseClient, force = false) {
+  let marks = parseHours(env("TEAMS_HOURS_BEFORE"));
+  if (!marks.length) marks = parseHours("72,48,24");
+  const widest = marks[0];
+
+  const hooks = Object.keys(TEAM_NAMES)
+    .map((team) => ({ team, url: env(`TEAMS_WEBHOOK_${team.toUpperCase().replace(/-/g, "_")}`) }))
+    .filter((h) => h.url);
+  if (!hooks.length) return { posted: 0, reason: "no Teams webhook secret found" };
+
+  const nowMs = Date.now();
+  const today = localNow(TEAMS_TZ).date;
+  const lastDay = addDays(today, Math.ceil(widest / 24) + 1);
+  const [{ data: assignments }, { data: quarters }, { data: courses }] = await Promise.all([
+    db.from("assignments").select("id,name,due_date,due_time,quarter_id,course_id,assigned_to,canvas_url")
+      .eq("done", false).gte("due_date", today).lte("due_date", lastDay),
+    db.from("quarters").select("id,team"),
+    db.from("courses").select("id,code,name"),
+  ]);
+  const teamOf = new Map((quarters ?? []).map((q) => [q.id, q.team || DEFAULT_TEAM]));
+  const courseLabel = new Map((courses ?? []).map((c) => [c.id, c.code || c.name]));
+  const appUrl = env("APP_URL");
+
+  // Which mark each assignment is inside right now: the smallest mark it has reached.
+  type Hit = { a: NonNullable<typeof assignments>[number]; mark: number; hoursLeft: number };
+  const hits: Hit[] = [];
+  for (const a of assignments ?? []) {
+    const dueMs = zonedMs(a.due_date, String(a.due_time ?? "23:59"), TEAMS_TZ);
+    const hoursLeft = (dueMs - nowMs) / 3600000;
+    if (hoursLeft <= 0 || hoursLeft > widest) continue;
+    const mark = marks.filter((m) => hoursLeft <= m).pop()!; // e.g. 30h left → 48, 20h left → 24
+    hits.push({ a, mark, hoursLeft });
+  }
+
+  const results: Record<string, string> = {};
+  let posted = 0;
+
+  for (const { team, url } of hooks) {
+    const mine = hits.filter((h) => (teamOf.get(h.a.quarter_id) ?? DEFAULT_TEAM) === team);
+
+    // Claim each alert first so overlapping runs never post it twice.
+    const fresh: Hit[] = [];
+    for (const h of mine) {
+      if (force) { fresh.push(h); continue; }
+      const { data: logged } = await db.from("teams_post_log")
+        .upsert({ team: `due${h.mark}h:${h.a.id}`, day: h.a.due_date }, { onConflict: "team,day", ignoreDuplicates: true })
+        .select("team");
+      if (logged?.length) fresh.push(h);
+    }
+    if (!fresh.length) { results[TEAM_NAMES[team] ?? team] = "nothing new"; continue; }
+
+    for (const mark of marks) {
+      const list = fresh.filter((h) => h.mark === mark).sort((x, y) => x.hoursLeft - y.hoursLeft);
+      if (!list.length) continue;
+      const body: unknown[] = [
+        { type: "TextBlock", size: "Medium", weight: "Bolder", wrap: true,
+          color: mark <= 24 ? "Attention" : "Accent",
+          text: `⏰ ${TEAM_NAMES[team] ?? team}: due within ${mark > 48 && mark % 24 === 0 ? `${mark / 24} days` : `${mark} hours`} (${list.length})` },
+      ];
+      for (const { a, hoursLeft } of list) {
+        const link = safeUrl(a.canvas_url);
+        const who = (a.assigned_to ?? []).length ? `For: ${a.assigned_to.join(", ")}` : "";
+        const left = hoursLeft >= 1 ? `${Math.round(hoursLeft)}h left` : `${Math.max(1, Math.round(hoursLeft * 60))} min left`;
+        body.push({
+          type: "Container", separator: true, spacing: "Medium",
+          items: [
+            { type: "TextBlock", weight: "Bolder", wrap: true, text: a.name },
+            { type: "TextBlock", isSubtle: true, spacing: "None", wrap: true,
+              text: [courseLabel.get(a.course_id) ?? "Course",
+                a.due_time ? formatDue(a.due_date, a.due_time) : `${formatDue(a.due_date)}, by end of day`,
+                left, who].filter(Boolean).join(" · ") },
+            ...(link ? [{ type: "TextBlock", spacing: "Small", text: `[Open in Canvas](${link})` }] : []),
+          ],
+        });
+      }
+      if (appUrl) body.push({ type: "TextBlock", spacing: "Medium", text: `[Open the dashboard](${appUrl})` });
+
+      const label = `${TEAM_NAMES[team] ?? team} ${mark}h`;
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "message",
+            attachments: [{
+              contentType: "application/vnd.microsoft.card.adaptive", contentUrl: null,
+              content: { $schema: "http://adaptivecards.io/schemas/adaptive-card.json", type: "AdaptiveCard", version: "1.4", body },
+            }],
+          }),
+        });
+        if (!res.ok) throw new Error(`Teams ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        posted++;
+        results[label] = `posted ${list.length}`;
+      } catch (e) {
+        console.error(`Countdown post failed for ${label}:`, e);
+        results[label] = `FAILED: ${e instanceof Error ? e.message : String(e)}`;
+        if (!force) { // un-claim so the next run retries
+          for (const { a } of list) {
+            await db.from("teams_post_log").delete().eq("team", `due${mark}h:${a.id}`).eq("day", a.due_date);
+          }
+        }
+      }
+    }
+  }
+  return { posted, countdowns: results };
+}
+
 Deno.serve(async (req) => {
   const secret = env("CRON_SECRET");
   if (!secret || req.headers.get("x-cron-secret") !== secret) {
@@ -651,11 +790,16 @@ Deno.serve(async (req) => {
 
   // Test: POST {"teamsTest": true} to post the Teams "coming up" message right now.
   // Test: POST {"meetingTest": true} to post a reminder for every meeting right now.
-  let body: { teamsTest?: boolean; meetingTest?: boolean } = {};
+  // Test: POST {"countdownTest": true} to post the 48h / 24h alerts for everything inside them right now.
+  let body: { teamsTest?: boolean; meetingTest?: boolean; countdownTest?: boolean } = {};
   try { body = await req.json(); } catch { /* cron sends an empty body */ }
   if (body?.teamsTest) {
     const teams = await postTeamsDigests(db, true);
     return new Response(JSON.stringify({ teams }, null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (body?.countdownTest) {
+    const countdowns = await postDueCountdowns(db, true);
+    return new Response(JSON.stringify({ countdowns }, null, 2), { headers: { "Content-Type": "application/json" } });
   }
   if (body?.meetingTest) {
     const meetings = await postMeetingReminders(db, true);
@@ -673,6 +817,9 @@ Deno.serve(async (req) => {
 
   try { result.teams = await postTeamsDigests(db); }
   catch (e) { result.teamsError = e instanceof Error ? e.message : String(e); }
+
+  try { result.countdowns = await postDueCountdowns(db); }
+  catch (e) { result.countdownsError = e instanceof Error ? e.message : String(e); }
 
   try { result.meetings = await postMeetingReminders(db); }
   catch (e) { result.meetingsError = e instanceof Error ? e.message : String(e); }
